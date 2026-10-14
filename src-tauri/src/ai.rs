@@ -73,6 +73,14 @@ pub struct AiRequest {
     pub(crate) max_tokens: u32,
 }
 
+/// Wakes the requests in flight when the page cancels, so they stop instead of running on.
+static CANCEL: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+#[tauri::command]
+pub fn ai_cancel() {
+    CANCEL.notify_waiters();
+}
+
 /// Errors start with a short code the page can branch on: `no_key:`, `refused:`, `api:`, `network:`.
 #[tauri::command]
 pub async fn ai_request(
@@ -80,20 +88,33 @@ pub async fn ai_request(
     client: tauri::State<'_, AiClient>,
     request: AiRequest,
 ) -> Result<Value, String> {
+    // Dropping the request stops it: the HTTP call is abandoned, and Claude Code is killed.
+    let cancelled = CANCEL.notified();
+    tokio::select! {
+        result = run(&app, &client.0, &request) => result,
+        () = cancelled => Err("api: Cancelled.".into()),
+    }
+}
+
+async fn run(
+    app: &tauri::AppHandle,
+    client: &reqwest::Client,
+    request: &AiRequest,
+) -> Result<Value, String> {
     let Some(key) = api_key() else {
-        if crate::claude_code::enabled(&app) {
-            return crate::claude_code::request(&request, MODEL).await;
+        if crate::claude_code::enabled(app) {
+            return crate::claude_code::request(request, MODEL).await;
         }
         return Err(
             "no_key: Add an Anthropic API key or use your Claude subscription first.".into(),
         );
     };
-    let body = request_body(&request, true);
-    let mut response = send(&client.0, &key, &body, true).await?;
+    let body = request_body(request, true);
+    let mut response = send(client, &key, &body, true).await?;
 
     // If this account can't use server-side fallbacks, try once without them.
     if matches!(&response, Err(message) if message.contains("fallback")) {
-        response = send(&client.0, &key, &request_body(&request, false), false).await?;
+        response = send(client, &key, &request_body(request, false), false).await?;
     }
     parse_response(&response?)
 }

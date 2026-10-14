@@ -13,7 +13,7 @@ interface Props {
 
 const errorText = (err: unknown) => String(err).replace(/^\w+: /, "");
 
-const NOT_INSTALLED: ClaudeCodeStatus = { installed: false, connected: false, enabled: false, plan: null };
+const NOT_INSTALLED: ClaudeCodeStatus = { installed: false, connected: false, enabled: false, plan: null, error: null };
 
 /**
  * Lets the person run AI features on their Claude subscription through Claude Code.
@@ -31,10 +31,12 @@ export function SubscriptionDialog({ hasKey, message, onEnabled, onDisabled, onU
       .catch(() => setStatus(NOT_INSTALLED));
   };
 
+  useEffect(check, []);
+
+  // A button that disappears takes focus with it, and then Escape stops working.
   useEffect(() => {
-    dialogRef.current?.focus();
-    check();
-  }, []);
+    if (!dialogRef.current?.contains(document.activeElement)) dialogRef.current?.focus();
+  }, [status]);
 
   const setEnabled = async (enabled: boolean) => {
     setError(null);
@@ -62,7 +64,7 @@ export function SubscriptionDialog({ hasKey, message, onEnabled, onDisabled, onU
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
         <h2>Claude subscription</h2>
-        {message && !inUse && <p className="dialog-alert">{message}</p>}
+        {message && <p className="dialog-alert">{message}</p>}
 
         {!status && <p>Checking Claude Code…</p>}
 
@@ -72,6 +74,8 @@ export function SubscriptionDialog({ hasKey, message, onEnabled, onDisabled, onU
             claude.com/code and sign in, then check again. Or use an API key instead.
           </p>
         )}
+
+        {status?.error && <p className="dialog-alert">Claude Code didn't answer as expected: {status.error}</p>}
 
         {status?.installed && !status.connected && (
           <p>
@@ -99,7 +103,7 @@ export function SubscriptionDialog({ hasKey, message, onEnabled, onDisabled, onU
         {error && <p className="dialog-alert">{error}</p>}
 
         <div className="dialog-actions">
-          {inUse && (
+          {status?.enabled && (
             <button type="button" className="danger" onClick={() => void setEnabled(false)}>
               Stop using subscription
             </button>

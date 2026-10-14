@@ -44,6 +44,7 @@ pub fn run() {
             ai::ai_set_key,
             ai::ai_clear_key,
             ai::ai_request,
+            ai::ai_cancel,
             claude_code::claude_code_status,
             claude_code::claude_code_set_enabled
         ])

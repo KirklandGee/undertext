@@ -2,7 +2,7 @@ import { MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "reac
 import { TextSelection, Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { AltPanel, AltTab } from "./components/AltPanel";
-import { AiError, aiClearKey, aiKeyStatus, aiSetKey } from "./ai/client";
+import { AiError, aiCancel, aiClearKey, aiKeyStatus, aiSetKey } from "./ai/client";
 import {
   applyFixes,
   CHECKS,
@@ -242,8 +242,9 @@ export default function App() {
 
   /** A rejected key goes back to the key dialog; with no key, offer the subscription first. */
   const openAiSetup = async (message: string) => {
-    if (await aiKeyStatus().catch(() => false)) void openKeyDialog(message);
-    else void openSubscriptionDialog(message);
+    const hasKey = await aiKeyStatus().catch(() => false);
+    if (hasKey) setKeyDialog({ message, hasKey });
+    else setSubscriptionDialog({ message, hasKey });
   };
 
   /** Runs one AI task at a time. Cancelling makes its result be ignored. */
@@ -267,6 +268,7 @@ export default function App() {
   };
 
   const cancelAi = () => {
+    void aiCancel().catch(() => {});
     aiRunRef.current++;
     setAiBusy(null);
     flash("Cancelled");
@@ -800,8 +802,8 @@ export default function App() {
           hasKey={subscriptionDialog.hasKey}
           message={subscriptionDialog.message}
           onEnabled={() => {
+            flash(subscriptionDialog.hasKey ? "Saved. Your API key still comes first." : "Using your Claude subscription");
             setSubscriptionDialog(null);
-            flash("Using your Claude subscription");
             view().focus();
           }}
           onDisabled={() => {

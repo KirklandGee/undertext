@@ -55,6 +55,9 @@ export const aiSetKey = (key: string) => invoke<void>("ai_set_key", { key });
 
 export const aiClearKey = () => invoke<void>("ai_clear_key");
 
+/** Stops the request in flight on the Rust side, so it doesn't keep running (and using the plan). */
+export const aiCancel = () => (isTauri ? invoke<void>("ai_cancel") : Promise.resolve());
+
 export interface ClaudeCodeStatus {
   installed: boolean;
   /** Claude Code is signed in. */
@@ -63,6 +66,8 @@ export interface ClaudeCodeStatus {
   enabled: boolean;
   /** "pro", "max", … when signed in with a Claude subscription */
   plan: string | null;
+  /** Why the sign-in check failed, when Claude Code is installed but did not answer. */
+  error: string | null;
 }
 
 /** Claude Code runs AI requests on the person's Claude subscription when no API key is set and they opted in. */
