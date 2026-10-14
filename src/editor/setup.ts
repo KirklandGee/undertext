@@ -7,6 +7,7 @@ import { Command, EditorState } from "prosemirror-state";
 import { serializeInline } from "./markdown";
 import {
   altInSelection,
+  continueList,
   countWords,
   paragraphAt,
   toggleGhost,
@@ -54,6 +55,7 @@ export function createState(doc: Node, handlers: () => EditorHandlers): EditorSt
         "Shift-Mod-z": redo,
         "Mod-y": redo,
         "Mod-/": ghostOrKeep,
+        Enter: continueList,
         "Shift-Enter": hardBreak,
         "Shift-Mod-a": call("alternatives"),
         "Shift-Mod-g": call("aiAlternatives"),

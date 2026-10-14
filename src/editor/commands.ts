@@ -455,6 +455,84 @@ export function deleteGhosts(state: EditorState): Transaction | null {
 }
 
 // ---------------------------------------------------------------------------
+// Lists
+
+// A list is plain text: one item per line, lines split by hard breaks, all in
+// one paragraph. That is how a Markdown list loads from disk.
+const LIST_MARKER = /^(\s*)(?:([-*+])|(\d+)([.)]))(\s+)/;
+
+const lineEndAt = (text: string, i: number) => {
+  const n = text.indexOf("\n", i);
+  return n < 0 ? text.length : n;
+};
+
+/** Enter in a list item starts the next item. Enter in an empty item ends the list. */
+export const continueList: Command = (state, dispatch) => {
+  const { $from, $to } = state.selection;
+  if (!$from.sameParent($to) || $from.parent.type !== schema.nodes.paragraph) return false;
+  const para = $from.parent;
+  // A hard break is one position wide, so string offsets match paragraph offsets.
+  const text = para.textBetween(0, para.content.size, undefined, "\n");
+  const offset = $from.parentOffset;
+  const lineStart = offset === 0 ? 0 : text.lastIndexOf("\n", offset - 1) + 1;
+  const lineEnd = lineEndAt(text, offset);
+  const line = text.slice(lineStart, lineEnd);
+  const m = LIST_MARKER.exec(line);
+  if (!m || offset < lineStart + m[0].length) return false;
+  if (!dispatch) return true;
+
+  const start = $from.start();
+  const tr = state.tr;
+
+  if (line.slice(m[0].length).trim() === "") {
+    // Drop the empty item. Lines before and after stay as their own paragraphs.
+    const hasBefore = lineStart > 0;
+    const hasAfter = lineEnd < text.length;
+    let pos = start + (hasBefore ? lineStart - 1 : lineStart);
+    tr.delete(pos, start + (hasAfter ? lineEnd + 1 : lineEnd));
+    if (hasBefore) {
+      tr.split(pos);
+      pos += 2;
+    }
+    if (hasAfter) tr.split(pos);
+    dispatch(tr.setSelection(TextSelection.create(tr.doc, pos)).scrollIntoView());
+    return true;
+  }
+
+  const [, indent, bullet, num, delim, space] = m;
+
+  // Renumber the items below at the same level. Nested lines are skipped.
+  // Done first: these edits sit after the caret, so its positions stay valid.
+  if (num) {
+    let n = Number(num) + 1;
+    const edits: { from: number; to: number; text: string }[] = [];
+    for (let s = lineEndAt(text, $to.parentOffset) + 1; s <= text.length; ) {
+      const e = lineEndAt(text, s);
+      const next = text.slice(s, e);
+      const lead = /^\s*/.exec(next)![0].length;
+      const item = LIST_MARKER.exec(next);
+      if (lead <= indent.length) {
+        if (!item?.[3] || lead < indent.length || item[4] !== delim) break;
+        edits.push({ from: s + lead, to: s + lead + item[3].length, text: String(++n) });
+      }
+      s = e + 1;
+    }
+    for (const ed of edits.reverse()) tr.insertText(ed.text, start + ed.from, start + ed.to);
+  }
+
+  // Don't carry spaces around the caret into either item.
+  let a = offset;
+  while (a > lineStart + m[0].length && /[ \t]/.test(text[a - 1])) a--;
+  let b = $to.parentOffset;
+  while (b < text.length && /[ \t]/.test(text[b])) b++;
+
+  const marker = `${indent}${bullet ?? `${Number(num) + 1}${delim}`}${space}`;
+  tr.replaceWith(start + a, start + b, [schema.nodes.hard_break.create(), schema.text(marker)]);
+  dispatch(tr.setSelection(TextSelection.create(tr.doc, start + a + 1 + marker.length)).scrollIntoView());
+  return true;
+};
+
+// ---------------------------------------------------------------------------
 // Counting
 
 export function countWords(doc: Node): { words: number; chars: number } {

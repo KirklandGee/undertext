@@ -2,6 +2,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import {
   addAltVariant,
+  continueList,
   countWords,
   createAlt,
   cycleAlt,
@@ -284,5 +285,76 @@ describe("AI results on the page", () => {
     const spans = longSentences(state);
     expect(spans).toHaveLength(1);
     expect(state.doc.textBetween(spans[0].from, spans[0].to)).toBe(long);
+  });
+});
+
+describe("lists", () => {
+  const enterAfter = (md: string, needle: string) => {
+    let state = stateFor(md);
+    const pos = findText(state, needle) + needle.length;
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)));
+    const handled = continueList(state, (tr) => (state = state.apply(tr)));
+    return { handled, md: serializeFile(state.doc, ""), caret: state.selection.from, state };
+  };
+
+  it("starts the next numbered item on the next line", () => {
+    const r = enterAfter("1. First list item\n", "item");
+    expect(r.md).toBe("1. First list item\n2. \n");
+    expect(r.state.doc.childCount).toBe(1);
+    expect(r.caret).toBe(r.state.doc.child(0).content.size + 1);
+  });
+
+  it.each([
+    ["- a\n", "- a\n- \n"],
+    ["  * a\n", "  * a\n  * \n"],
+    ["9) a\n", "9) a\n10) \n"],
+  ])("continues %j", (md, out) => {
+    expect(enterAfter(md, "a").md).toBe(out);
+  });
+
+  it("splits an item in the middle without stray spaces", () => {
+    expect(enterAfter("1. one two\n", "one").md).toBe("1. one\n2. two\n");
+    expect(enterAfter("- one   two\n", "one ").md).toBe("- one\n- two\n");
+    expect(enterAfter("1. a \n", "a").md).toBe("1. a\n2. \n");
+  });
+
+  it("renumbers the items below", () => {
+    expect(enterAfter("1. a\n2. b\n3. c\n", "a").md).toBe("1. a\n2. \n3. b\n4. c\n");
+    expect(enterAfter("8. a\n9. b\n", "a").md).toBe("8. a\n9. \n10. b\n");
+  });
+
+  it("renumbers past nested lines and stops at the end of the list", () => {
+    expect(enterAfter("1. a\n   - x\n2. b\nText\n3. c\n", "a").md).toBe(
+      "1. a\n2. \n   - x\n3. b\nText\n3. c\n",
+    );
+    expect(enterAfter("1. a\n2) b\n", "a").md).toBe("1. a\n2. \n2) b\n");
+    expect(enterAfter("  1. a\n  2. b\n3. c\n", "a").md).toBe("  1. a\n  2. \n  3. b\n3. c\n");
+  });
+
+  it("drops an empty item and leaves a paragraph to type in", () => {
+    let state = stateFor("1. a\n2. \n");
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, state.doc.child(0).content.size + 1)));
+    continueList(state, (tr) => (state = state.apply(tr)));
+    expect(state.doc.childCount).toBe(2);
+    expect(state.doc.child(0).textContent).toBe("1. a");
+    expect(state.doc.child(1).content.size).toBe(0);
+    expect(state.selection.$from.parent).toBe(state.doc.child(1));
+  });
+
+  it("drops an empty item in the middle", () => {
+    let state = stateFor("- a\n- \n- b\n");
+    const pos = findText(state, "b") - 3; // after "- " on the empty line
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)));
+    continueList(state, (tr) => (state = state.apply(tr)));
+    expect(state.doc.childCount).toBe(3);
+    expect(state.doc.child(1).content.size).toBe(0);
+    expect(state.doc.child(2).textContent).toBe("- b");
+    expect(state.selection.$from.parent).toBe(state.doc.child(1));
+  });
+
+  it("leaves plain text and the marker itself alone", () => {
+    expect(enterAfter("Just text\n", "Just").handled).toBe(false);
+    expect(enterAfter("1.5 million\n", "1.5").handled).toBe(false);
+    expect(enterAfter("1. a\n", "1").handled).toBe(false);
   });
 });
