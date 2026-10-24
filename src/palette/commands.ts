@@ -18,6 +18,7 @@ import {
   versionedItems,
 } from "../editor/commands";
 import { CHECKS, CheckId, TRIMS, TrimId } from "../ai/tasks";
+import { inlineText } from "../editor/markdown";
 import { schema } from "../editor/schema";
 import { EditorInfo } from "../editor/setup";
 
@@ -67,14 +68,6 @@ export interface PaletteContext {
 export const GROUPS = ["Alternatives", "Lab", "Paragraph", "Ghost", "Overflow", "Go to", "View", "Document", "Edit", "Settings"];
 
 const quote = (text: string, max = 36) => `“${text.length > max ? `${text.slice(0, max - 1)}…` : text}”`;
-/** Inline Markdown to display text: the active variant of each alternative, no ghost markers. */
-const plain = (md: string) =>
-  md
-    .replace(/\{\{([^}]*)\}\}/g, (_, body: string) => {
-      const parts = body.split("|");
-      return (parts.find((p) => p.trimStart().startsWith(">")) ?? parts[0]).replace(/^\s*>/, "").trim();
-    })
-    .replace(/~~|\\/g, "");
 
 /** Everything you can do right now, given where the caret is. */
 export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
@@ -184,7 +177,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
           id: `para.use.${i}`,
           dynamic: true,
           group: "Paragraph",
-          title: `Switch to version ${i + 1}: ${quote(plain(v), 40)}`,
+          title: `Switch to version ${i + 1}: ${quote(inlineText(v), 40)}`,
           keywords: i === 0 ? "original" : "variant",
           run: () => apply(setParagraphActive(view.state, pos, i)),
         });

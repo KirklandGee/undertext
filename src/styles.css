@@ -245,6 +245,15 @@ button:focus-visible {
   font-style: italic;
 }
 
+.md-del {
+  text-decoration: line-through;
+}
+
+/* The markers stay readable, not struck through. */
+.md-del.md-marker {
+  text-decoration: none;
+}
+
 .ghost {
   opacity: 0.13;
   transition: opacity 0.2s;

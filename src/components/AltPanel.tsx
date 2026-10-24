@@ -1,4 +1,5 @@
 import { KeyboardEvent, RefObject, useEffect, useState } from "react";
+import { inlineText } from "../editor/markdown";
 import { EditorInfo } from "../editor/setup";
 
 export type AltTab = "inline" | "paragraph";
@@ -144,7 +145,7 @@ function ParagraphList({ info, onParaActivate, onParaRemove, onFork }: Props) {
             <li key={i} className={i === para.active ? "on" : ""}>
               <button className="variant" onClick={() => onParaActivate(i)}>
                 <span className="bullet">{i + 1}</span>
-                <span className="variant-text clamp">{v.replace(/~~|\{\{|\}\}/g, "") || "(empty)"}</span>
+                <span className="variant-text clamp">{inlineText(v) || "(empty)"}</span>
               </button>
               <button className="remove" onClick={() => onParaRemove(i)} aria-label={`Remove version ${i + 1}`}>
                 ×

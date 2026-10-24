@@ -75,7 +75,7 @@ const str = { type: "string" };
 const int = { type: "integer" };
 
 const VOICE =
-  "You help a writer edit their own draft. The draft is Markdown: #, **, *, - and > are intentional formatting. " +
+  "You help a writer edit their own draft. The draft is Markdown: #, **, *, ~~, - and > are intentional formatting." +
   "Paragraphs are numbered like [3]. When you quote text, copy it exactly, character for character, from one paragraph.";
 
 // ---------------------------------------------------------------------------

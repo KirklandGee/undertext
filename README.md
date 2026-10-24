@@ -91,7 +91,7 @@ Plain Markdown with four small additions:
 ```markdown
 # {{The Obvious, the Easy, and the Possible|Three Buckets}}
 
-Much of the {{tension|pressure|>struggle}} comes from here. ~~Maybe cut this.~~
+Much of the {{tension|pressure|>struggle}} comes from here. {-Maybe cut this.-}
 
 :::alt
 First version of a paragraph.
@@ -106,10 +106,13 @@ Leftovers live after the marker.
 
 - `{{a|b|>c}}`: alternatives. The first item is the original. `>` marks the active one.
 - `{{calls|~judgments}}`: `~` marks a suggestion that came from AI.
-- `~~text~~`: ghosted text. Other Markdown tools show it as strikethrough.
+- `{-text-}`: ghosted text. Other Markdown tools show the braces as plain text.
 - `:::alt` … `:::or` … `:::`: paragraph versions. `*` marks the active one.
 - `<!-- overflow -->`: everything after this line is the Overflow panel.
-- Use `\` to escape `~ { } | >`. All other Markdown stays as literal text.
+- Use `\` to escape `{ } | > ~`. All other Markdown stays as literal text, so `~~text~~` is ordinary
+  strikethrough.
+
+Older files wrote ghosts as `~~text~~`. Those now open as strikethrough.
 
 ## AI and the Lab
 
@@ -145,7 +148,7 @@ limits. If `claude` isn't in `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local
 
 - A ghost that covers only part of an alternative is lost when you save.
 - Empty paragraphs collapse when you save.
-- When you save, `~` and `{` in your text get a backslash (`\~`, `\{`), so they are not read as syntax.
+- When you save, `{` in your text gets a backslash (`\{`), so it is not read as syntax.
 - Autosave overwrites the file even if another editor changed it.
 - Typing at the end of an alternative adds plain text after it, not to it.
 

@@ -16,9 +16,9 @@ import {
   startsWithVowelSound,
   toggleGhost,
 } from "./commands";
-import { parseFile, serializeFile } from "./markdown";
+import { inlineText, parseFile, serializeFile } from "./markdown";
 import { dedupePlugin } from "./plugins";
-import { deleteGhosts, settleAll } from "./commands";
+import { deleteGhosts, hasGhosts, settleAll } from "./commands";
 import { buildCommands, PaletteContext } from "../palette/commands";
 import { matchScore, rank } from "../palette/match";
 import { describe as describeEditor } from "./setup";
@@ -44,20 +44,46 @@ describe("markdown round trip", () => {
   it.each([
     "# The Title\n\nA plain paragraph.\n",
     "Much of the {{tension|pressure|>struggle}} comes from here.\n",
-    "Keep this. ~~Maybe cut this.~~ Keep that.\n",
+    "Keep this. {-Maybe cut this.-} Keep that.\n",
     ":::alt\nFirst version.\n:::or*\nSecond {{word|term}} version.\n:::\n",
     "Line one\nline two\n\n- a list\n- stays as text\n",
     "Body.\n\n<!-- overflow -->\n\nExtra notes\n\nmore notes\n",
-    "~~ghost {{a|>b}} inside~~ after\n",
-    "Escapes: \\~ and \\{ and **bold** and *em*.\n",
+    "{-ghost {{a|>b}} inside-} after\n",
+    "Escapes: \\{ and **bold** and *em* and ~~strike~~ and ~5.\n",
     "{{a\\|b|c\\}d}}\n",
+    "{-ends in a dash--} and {-has -\\} inside-}\n",
+    "{-{{a|b-}} first-}\n",
+    "\\{-not a ghost-}\n",
   ])("keeps %j", (md) => {
     expect(roundTrip(md)).toBe(md);
   });
 
   it("treats unmatched syntax as literal text", () => {
-    const { doc } = parseFile("open {{ never closed and ~~ too\n");
-    expect(doc.textContent).toBe("open {{ never closed and ~~ too");
+    const { doc } = parseFile("open {{ never closed and {- too\n");
+    expect(doc.textContent).toBe("open {{ never closed and {- too");
+  });
+
+  it("turns inline Markdown into display text", () => {
+    expect(inlineText("Use {{word|>term}} {-maybe-} \\{x ~~y~~")).toBe("Use term maybe {x ~~y~~");
+  });
+
+  it("reads strikethrough as text, not a ghost", () => {
+    const { doc } = parseFile("a ~~struck~~ word\n");
+    expect(doc.textContent).toBe("a ~~struck~~ word");
+    expect(hasGhosts(doc)).toBe(false);
+  });
+
+  it("reads old escaped tildes and saves them plain", () => {
+    expect(roundTrip("about \\~5 minutes\n")).toBe("about ~5 minutes\n");
+  });
+
+  it("escapes what would end a ghost early", () => {
+    let state = stateFor("one -} two\n");
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, state.doc.content.size - 1)));
+    toggleGhost(state, (tr) => (state = state.apply(tr)));
+    const md = serializeFile(state.doc, "");
+    expect(md).toBe("{-one -\\} two-}\n");
+    expect(parseFile(md).doc.textContent).toBe("one -} two");
   });
 
   it("shows the active variant", () => {
@@ -169,7 +195,7 @@ describe("ghost and counting", () => {
     const from = findText(state, "three");
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, from + 5)));
     toggleGhost(state, (tr) => (state = state.apply(tr)));
-    expect(serializeFile(state.doc, "")).toBe("one two ~~three~~ four\n");
+    expect(serializeFile(state.doc, "")).toBe("one two {-three-} four\n");
     expect(countWords(state.doc).words).toBe(3);
   });
 });
@@ -183,14 +209,14 @@ function findAltIdAt(state: EditorState, pos: number): string {
 
 describe("settling and cuts", () => {
   it("deletes ghosted text without leaving double spaces", () => {
-    const state = stateFor("Keep this. ~~Maybe cut.~~ Keep that.\n");
+    const state = stateFor("Keep this. {-Maybe cut.-} Keep that.\n");
     expect(state.apply(deleteGhosts(state)!).doc.textContent).toBe("Keep this. Keep that.");
   });
 
   it("accepts all current choices and keeps ghosts", () => {
-    const md = "A {{one|>uno}} word. ~~gone~~\n\n:::alt\nFirst.\n:::or*\nSecond.\n:::\n";
+    const md = "A {{one|>uno}} word. {-gone-}\n\n:::alt\nFirst.\n:::or*\nSecond.\n:::\n";
     const state = stateFor(md);
-    expect(serializeFile(state.apply(settleAll(state)!).doc, "")).toBe("A uno word. ~~gone~~\n\nSecond.\n");
+    expect(serializeFile(state.apply(settleAll(state)!).doc, "")).toBe("A uno word. {-gone-}\n\nSecond.\n");
   });
 });
 

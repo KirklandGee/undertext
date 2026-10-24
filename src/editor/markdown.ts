@@ -6,15 +6,16 @@ import { newId, schema } from "./schema";
 //   {{tension|pressure|>struggle}}   word/sentence alternatives. First is the
 //                                    original. `>` marks the active one.
 //   {{calls|~judgments}}             `~` marks a suggestion that came from AI.
-//   ~~maybe cut this~~               ghosted (dimmed) text.
+//   {-maybe cut this-}               ghosted (dimmed) text.
 //   :::alt / :::or* / :::            whole-paragraph versions. `*` = active.
 //   <!-- overflow -->                everything after this line is overflow.
 //
 // Everything else is kept as literal text, so other Markdown survives a
-// round trip untouched.
+// round trip untouched. `~~x~~` is ordinary strikethrough.
 
 export const OVERFLOW_MARKER = "<!-- overflow -->";
 
+// `~` stays escapable so `\~` in files from before `{-x-}` still reads as `~`.
 const ESCAPABLE = new Set(["\\", "~", "{", "}", "|", ">"]);
 
 export interface ParsedFile {
@@ -82,6 +83,12 @@ export function parseInline(src: string): Fragment {
   return Fragment.from(parseInlineNodes(src, Mark.none));
 }
 
+/** Inline Markdown as display text: the active alternatives, no ghost syntax, no escapes. */
+export function inlineText(src: string): string {
+  const fragment = parseInline(src);
+  return fragment.textBetween(0, fragment.size, undefined, "\n");
+}
+
 export function serializeParagraph(node: Node): string {
   const current = serializeInline(node.content);
   const variants: string[] | null = node.attrs.variants;
@@ -114,10 +121,8 @@ export function serializeInline(content: Fragment): string {
       }
       segments.push({ ghost, text: serializeAlt(alt, current) });
     } else {
-      segments.push({
-        ghost: Boolean(schema.marks.ghost.isInSet(node.marks)),
-        text: node.isText ? escapeText(node.text ?? "") : "\n",
-      });
+      const ghost = Boolean(schema.marks.ghost.isInSet(node.marks));
+      segments.push({ ghost, text: node.isText ? escapeText(node.text ?? "", ghost) : "\n" });
     }
   }
 
@@ -125,12 +130,12 @@ export function serializeInline(content: Fragment): string {
   let inGhost = false;
   for (const seg of segments) {
     if (seg.ghost !== inGhost) {
-      out += "~~";
+      out += inGhost ? "-}" : "{-";
       inGhost = seg.ghost;
     }
     out += seg.text;
   }
-  if (inGhost) out += "~~";
+  if (inGhost) out += "-}";
   return out;
 }
 
@@ -151,11 +156,12 @@ function serializeAlt(alt: Mark, current: string): string {
   return `{{${parts.join("|")}}}`;
 }
 
-function escapeText(text: string): string {
+/** In a ghost, `-}` would end it early, so its `}` gets a backslash. */
+function escapeText(text: string, inGhost = false): string {
   let out = "";
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (ch === "~" || ch === "{") out += `\\${ch}`;
+    if (ch === "{" || (inGhost && ch === "}" && text[i - 1] === "-")) out += `\\${ch}`;
     else if (ch === "\\" && (i === text.length - 1 || ESCAPABLE.has(text[i + 1]))) out += "\\\\";
     else out += ch;
   }
@@ -195,8 +201,8 @@ function parseInlineNodes(src: string, marks: readonly Mark[]): Node[] {
       i++;
       continue;
     }
-    if (src.startsWith("~~", i)) {
-      const close = findUnescaped(src, "~~", i + 2);
+    if (src.startsWith("{-", i)) {
+      const close = findGhostEnd(src, i + 2);
       if (close > i + 2) {
         flush();
         const ghost = schema.marks.ghost.create().addToSet(marks);
@@ -222,13 +228,21 @@ function parseInlineNodes(src: string, marks: readonly Mark[]): Node[] {
   return out;
 }
 
-function findUnescaped(src: string, token: string, from: number): number {
+/** Finds the `-}` that closes a ghost. Skips escapes and whole alternatives, so `{{a|b-}}` can't end it. */
+function findGhostEnd(src: string, from: number): number {
   for (let j = from; j < src.length; j++) {
     if (src[j] === "\\" && ESCAPABLE.has(src[j + 1])) {
       j++;
       continue;
     }
-    if (src.startsWith(token, j)) return j;
+    if (src.startsWith("{{", j)) {
+      const alt = parseAlt(src, j);
+      if (alt) {
+        j = alt.end - 1;
+        continue;
+      }
+    }
+    if (src.startsWith("-}", j)) return j;
   }
   return -1;
 }

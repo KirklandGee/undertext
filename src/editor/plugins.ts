@@ -74,6 +74,15 @@ function buildDecorations(doc: Node): DecorationSet {
         Decoration.inline(b - 2, b, { class: "md-marker" }),
       );
     }
+    for (const m of text.matchAll(/(?<!~)~~(?=[^\s~])(.+?)(?<=[^\s~])~~(?!~)/g)) {
+      const a = start + m.index;
+      const b = a + m[0].length;
+      decos.push(
+        Decoration.inline(a, b, { class: "md-del" }),
+        Decoration.inline(a, a + 2, { class: "md-marker" }),
+        Decoration.inline(b - 2, b, { class: "md-marker" }),
+      );
+    }
     for (const m of text.matchAll(/(?<![*\p{L}\p{N}])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![*\p{L}\p{N}])/gu)) {
       const a = start + m.index;
       const b = a + m[0].length;

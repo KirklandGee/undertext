@@ -12,7 +12,7 @@ Paragraphs can have versions too. Press ⌘⇧D to copy this paragraph into a ne
 Paragraphs can have versions too. Press ⌘⇧D to fork the one you are in, then rewrite it in place. Hover over it and press ↑ or ↓, or press ⌥⇧J, to compare.
 :::
 
-Not sure a sentence belongs? Select it and press ⌘/ to ghost it. ~~It stays here, faint, so you can read the paragraph without it.~~ Put the cursor inside it and press ⌘/ again to revive it.
+Not sure a sentence belongs? Select it and press ⌘/ to ghost it. {-It stays here, faint, so you can read the paragraph without it.-} Put the cursor inside it and press ⌘/ again to revive it.
 
 Extra writing goes in the overflow. Select text and press ⌘⇧X to stash it there.
 
