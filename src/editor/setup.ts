@@ -73,6 +73,18 @@ const optionKeys = EditorView.domEventHandlers({
   },
 });
 
+/**
+ * A drag always selects text, even from inside a selection: it never moves
+ * the text. With the browser's drag cancelled, CodeMirror extends the
+ * selection from where the mouse went down.
+ */
+const dragSelects = EditorView.domEventHandlers({
+  dragstart(e) {
+    e.preventDefault();
+    return true;
+  },
+});
+
 const theme = EditorView.theme({
   "&": { color: "inherit", backgroundColor: "transparent" },
   "&.cm-focused": { outline: "none" },
@@ -102,6 +114,7 @@ export function createEditorState(text: string, initial: Layers, handlers?: () =
       livePreview,
       inkLayers,
       clipboard,
+      dragSelects,
       optionKeys,
       Prec.high(
         keymap.of([

@@ -4,14 +4,13 @@ import { rangeMarkdown, union } from "./commands";
 import { newId, parseInline, Span } from "./format";
 import { layersOf, mapLayers, setLayers } from "./layers";
 
-// Copy, cut, paste and drag keep alternatives and ghosts. Other apps get the
+// Copy, cut and paste keep alternatives and ghosts. Other apps get the
 // plain text, which is standard Markdown. Undertext also gets the selection
 // with its layers, in a private clipboard type. Some webviews drop private
 // types, so the last copy is also kept here and matched by its text.
 
 const MIME = "application/x-undertext";
 let lastCopy: { text: string; md: string } | null = null;
-let drag: { from: number; to: number; md: string } | null = null;
 
 /** The range as Undertext Markdown, with the layers inside it. Null when it holds none. */
 export function sliceMarkdown(state: EditorState, from: number, to: number): string | null {
@@ -75,49 +74,6 @@ export const clipboard = EditorView.domEventHandlers({
     e.preventDefault();
     const { from, to } = view.state.selection.main;
     view.dispatch(insertMarkdown(view.state, from, to, md));
-    return true;
-  },
-  dragstart(e, view) {
-    const { from, to, empty } = view.state.selection.main;
-    const md = empty ? null : sliceMarkdown(view.state, from, to);
-    drag = md === null ? null : { from, to, md };
-    if (drag) e.dataTransfer?.setData(MIME, drag.md);
-    // CodeMirror still sets the plain text and drag image.
-    return false;
-  },
-  dragend() {
-    drag = null;
-    return false;
-  },
-  drop(e, view) {
-    const source = drag;
-    drag = null;
-    const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-    if (!source || pos === null) return false;
-    e.preventDefault();
-    const { state } = view;
-    // Option-drag copies, as in CodeMirror.
-    const move = !e.altKey;
-    if (move && pos >= source.from && pos <= source.to) return true;
-    const slice = parseInline(source.md);
-    const changes = state.changes([
-      ...(move ? [{ from: source.from, to: source.to }] : []),
-      { from: pos, insert: slice.text },
-    ]);
-    const start = changes.mapPos(pos, -1);
-    const mapped = mapLayers(layersOf(state), changes);
-    const shift = <T extends Span>(r: T): T => ({ ...r, from: r.from + start, to: r.to + start });
-    view.focus();
-    view.dispatch({
-      changes,
-      effects: setLayers.of({
-        ...mapped,
-        alts: [...mapped.alts, ...slice.alts.map((a) => ({ ...shift(a), id: newId() }))].sort((a, b) => a.from - b.from),
-        ghosts: union([...mapped.ghosts, ...slice.ghosts.map(shift)]),
-      }),
-      selection: EditorSelection.range(start, start + slice.text.length),
-      userEvent: move ? "move.drop" : "input.drop",
-    });
     return true;
   },
 });
