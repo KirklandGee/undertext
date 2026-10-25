@@ -1,7 +1,7 @@
 # Moving the editor to CodeMirror 6
 
-Status: done on the `codemirror` branch, 2026-10-25. Phase 1 is on `main`. The open decisions took
-their defaults. Written 2026-10-20.
+Status: done and on `main`, 2026-10-25. See "Decisions taken" and "Next" at the end. Written
+2026-10-20.
 
 ## Goals
 
@@ -194,13 +194,29 @@ Total: about 3–4 weeks of focused work.
   accept the difference, case by case.
 - Spellcheck underlines may flicker when decorations rebuild.
 
-## Open decisions
+## Decisions taken
 
-The first option is the default.
+- Enter starts a new paragraph. Shift-Enter adds a line break.
+- Old `~~ghost~~` files open as strikethrough. No converter.
+- The link shortcut is ⌘⇧K. The palette stays on ⌘K.
+- Letters typed right after an alternative join it. A space or punctuation doesn't. (Changed after
+  the move: at first, typing at its end added plain text after it.)
+- `:::alt` stays for now, despite the clash with Pandoc and Docusaurus blocks.
+- A drag always selects text. It never moves text.
 
-- Enter: new paragraph, or a plain line break as in Obsidian.
-- Old `~~ghost~~` files: open as strikethrough, or add a one-time converter.
-- Link shortcut: ⌘⇧K, or move the palette off ⌘K.
-- Typing at the end of an alternative: adds plain text after it (today), or extends it. In
-  CodeMirror the second is a one-line change.
-- `:::alt` clashes with Pandoc and Docusaurus blocks: keep it for now, or rename it later.
+## Next
+
+As of 2026-10-25, everything above is on `main` and pushed. So are three follow-ups: a save guard
+against changes made in other apps, letters joining an alternative, and heading and list keys.
+
+1. Test the save guard in the macOS app. It is the only change not tried in the app.
+   - Open a copy of a document. Change it in another editor. Switch back with no edits here: it
+     should reload.
+   - Change it in the other editor again, then type here and wait for autosave: it should ask
+     "Load theirs" or "Keep mine".
+2. Put off on purpose, until there is a reason:
+   - Render tables and images. They show as Markdown source today.
+   - Rename `:::alt`, if files ever go through Pandoc or Docusaurus.
+   - Keep a ghost that covers only part of an alternative. Today that part is lost on save.
+3. Housekeeping: delete the local `codemirror` branch (merged), and decide whether to commit
+   `.claude/launch.json` (the browser preview config).
