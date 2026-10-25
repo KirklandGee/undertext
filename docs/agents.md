@@ -13,8 +13,11 @@ is proof; "I read the code" is not.
 2. **The end-of-turn gate** sends Claude back once when a turn changed code that `pnpm verify`
    hasn't passed.
 3. **Ask first:** Claude Code asks you before it pushes or merges.
-4. **CI** runs `pnpm verify` on GitHub for every push to `main` and every pull request.
-5. **`CLAUDE.md`** tells every agent session what done means and to run `pnpm verify`.
+4. **Skills** give each kind of work its first step and its proof: verify, fix a bug, build a
+   feature, refactor, learn from a mistake.
+5. **CI** runs `pnpm verify` on GitHub for every push to `main` and every pull request.
+6. **`CLAUDE.md`** tells every agent session what done means, which skill to use, and how tests
+   are written.
 
 ## Rules, and what holds them
 
@@ -23,6 +26,9 @@ is proof; "I read the code" is not.
 | Types, tests, web build, and Rust format, lint, and tests pass | `pnpm verify`, then CI | Checked. CI shows a red run, but nothing blocks a push to `main`. |
 | Run `pnpm verify` before calling work done | The end-of-turn gate, `CLAUDE.md` | Checked once per turn. Claude may stop the second time, and must say what is not verified. |
 | Push or merge only when you say so | Claude Code `ask` rules | Checked for the usual commands. A speed bump, not a lock. |
+| Fix a bug with a failing test first; refactor without changing assertions | The `fix-bug` and `refactor` skills | Asked |
+| Expected values written by hand; each new test seen failing once | `CLAUDE.md` | Asked |
+| Instructions name only files and `pnpm` commands that exist, and each skill says when to use it | `scripts/docs.test.mjs`, in `pnpm verify` | Checked |
 | Never weaken a check to pass it | `CLAUDE.md` | Asked |
 | Say what was not verified | `CLAUDE.md` | Asked |
 
@@ -74,6 +80,41 @@ as `cd x && git push`.
 - The real lock would be branch protection on GitHub. You push to `main` yourself, so there is
   none.
 
+## Skills
+
+The skills are in `.claude/skills/`. Claude Code reads each one's description and loads the full
+text only when a task matches, so they cost little until used. `CLAUDE.md` tells Claude to use
+them without being asked.
+
+| Skill | For | Its first step | Its proof |
+| --- | --- | --- | --- |
+| `verify` | Finishing any change | `pnpm verify` | The proof for that kind of change, from its table, and a report that says what was not verified |
+| `fix-bug` | Anything broken | A test that fails on the exact symptom | Undo the fix: the test fails. Restore it: it passes. |
+| `build-feature` | Anything new | Read the closest feature; settle your decisions in one round | One test per behavior, written first |
+| `refactor` | Structure only | Tests that pin today's behavior | The same tests pass, with their expected values untouched |
+| `learn` | A correction, or a mistake that repeats | Pick the strongest structure: type, test, script check, then a line of text | The check fails when the mistake is made on purpose |
+
+## Asking for work
+
+| To start | Say | Your part |
+| --- | --- | --- |
+| A bug fix | What you did, what happened, what should happen | Confirm Claude's restatement if the report was vague |
+| A feature | What it should do, and how you'd check it works | Answer the decisions Claude lists, all at once |
+| A refactor | What should get easier, and that behavior must not change | Read the list of tests whose expected values stayed the same |
+
+Any request works better with:
+
+- **The goal**, and a done check that can pass or fail: "pasting a link over a selection makes a
+  link, and undo restores the text".
+- **The proof you want**: a test, a screenshot, a run in the app.
+- **What you already know**, and real constraints: "only in the desktop app", "don't touch the
+  file format".
+
+Leave out the method and your theory of the cause, unless you are sure. They anchor Claude on
+them. Start a new session for unrelated work, so it starts with a clean context.
+
+Then read the report's "Not verified" part. Try in the app what Claude couldn't.
+
 ## `pnpm verify`
 
 It runs, in order, and prints one line per check:
@@ -97,8 +138,10 @@ It runs, in order, and prints one line per check:
   `.git/undertext/verified.json`. Each worktree keeps its own. A failed run deletes the record.
 - **Nothing changed** since the last pass: it says so and stops. `pnpm verify --force` runs the
   checks anyway, for example after `rustup update`.
-- **Only docs changed** since the last pass (`docs/`, `LICENSE`, and `*.md` outside `src/` and
-  `src-tauri/`): nothing to check. It records the new tree.
+- **Only docs changed** since the last pass: nothing to check. It records the new tree. Docs are
+  `docs/`, `LICENSE`, and Markdown outside `src/` and `src-tauri/`, but not the instructions:
+  `CLAUDE.md`, `README.md`, `docs/agents.md`, and everything in `.claude/`. The docs test reads
+  those, so a change to them runs every check.
 - **Only CI files changed** (`.github/`): local checks can't see them. It records nothing, even
   with `--force`. Push and read the CI run.
 - It finds `cargo` on `PATH`, in `~/.cargo/bin`, or in Homebrew's rustup folder. Without cargo it

@@ -58,12 +58,18 @@ export function changedPaths(before, after) {
   return [...paths].filter((path) => before[path] !== after[path]).sort();
 }
 
+/** Instructions for agents and people. `scripts/docs.test.mjs` checks them, so they count as code. */
+export const isInstructions = (path) =>
+  ["CLAUDE.md", "README.md", "docs/agents.md"].includes(path) || /^\.(claude|agents)\//.test(path);
+
 /**
  * Docs: no check reads them, so a change to them alone needs no verify. Markdown under src/ or
- * src-tauri/ may be a fixture the code reads, so it counts as code.
+ * src-tauri/ may be a fixture the code reads, so it counts as code, as do the instructions.
  */
 export const isDoc = (path) =>
-  !/^src(-tauri)?\//.test(path) && (path.endsWith(".md") || path.startsWith("docs/") || path === "LICENSE");
+  !/^src(-tauri)?\//.test(path) &&
+  !isInstructions(path) &&
+  (path.endsWith(".md") || path.startsWith("docs/") || path === "LICENSE");
 
 /** Only CI reads these. Local checks can't vouch for them. */
 export const isCiOnly = (path) => path.startsWith(".github/");

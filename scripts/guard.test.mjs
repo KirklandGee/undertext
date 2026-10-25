@@ -28,7 +28,7 @@ describe("the end-of-turn gate", () => {
     expect(guard(dir, "turn-end")).toBeNull();
 
     guard(dir, "turn-start");
-    write(dir, "README.md", "# App, documented\n");
+    write(dir, "LICENSE", "Documented.\n");
     expect(guard(dir, "turn-end")).toBeNull();
 
     guard(dir, "turn-start");
@@ -66,7 +66,7 @@ describe("the end-of-turn gate", () => {
     guard(dir, "turn-start");
     write(dir, "app.js", "changed\n");
     expect(verify(dir).status).toBe(0);
-    write(dir, "README.md", "# App, documented\n");
+    write(dir, "LICENSE", "Documented.\n");
     expect(guard(dir, "turn-end")).toBeNull();
   });
 

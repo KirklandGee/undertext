@@ -28,13 +28,23 @@ pnpm tauri build --bundles app    # src-tauri/target/release/bundle/macos/Undert
   when every check passes on it, or when only docs changed since its last pass.
 - It can't see the app window (WebKit), real AI calls, file dialogs, or the keychain. When a
   change depends on them, check it in `pnpm tauri dev`, or say it is not verified.
-- Never weaken a check to pass it: no skipped or deleted tests, no loosened assertions. If a
-  check is wrong, stop and say why.
+- Never weaken a check to pass it: no test skipped or deleted to get a pass, no loosened
+  assertions. If a check is wrong, stop and say why.
 - At the end of a turn that changed code `pnpm verify` hasn't passed, a hook sends you back
   once. Run it, or say what is not verified and stop. `git push` and `gh pr merge` ask the
   owner first.
 - Report what ran, what it showed, and what you did not verify. How this works:
   `docs/agents.md`.
+
+## Skills
+
+Use these without being asked. They are in `.claude/skills/`.
+
+- `verify`: before you call any change done.
+- `fix-bug`: anything broken, wrong, or a regression.
+- `build-feature`: anything new.
+- `refactor`: structure only, always as its own change.
+- `learn`: after the owner corrects you, or when a mistake repeats.
 
 ## How the editor works
 
@@ -52,9 +62,33 @@ pnpm tauri build --bundles app    # src-tauri/target/release/bundle/macos/Undert
 - `src-tauri/src/lib.rs`: file reads and writes (a save refuses to overwrite a change from another
   app unless told to), and `open_url` for web and mail links.
 
+## Tests
+
+- Editor tests sit beside the code, in `src/editor/*.test.ts`, and run on `EditorState` without a
+  DOM. `src/editor/keys.test.ts` shows the `stateFor` and `run` helpers, with `‸` for the caret and
+  `« »` for a selection. Rust tests live in each file's `mod tests`. Tooling tests are
+  `scripts/*.test.mjs`; the ones that run git use `scripts/test-repo.mjs`.
+- Each editor command gets a test. A command that changes layers also gets one that undoes and
+  redoes it and checks the saved Markdown.
+- Never take an expected value from the code under test: write the text, positions, and messages
+  out, and above all any value another part relies on, such as an error code the TypeScript side
+  matches. A hash or id may come from the code when another test pins that code. Then assert equal
+  or not equal.
+- Assert outcomes: the text, the saved Markdown, the layers, the file on disk. Check after each
+  step, not only at the end.
+- Never fake code in `src/` that decides the result. Stubs the test never calls are fine. The
+  network is the one boundary: give the answer straight to the function that reads it, as the
+  `applyFixes` tests do.
+- See each new test fail once, by breaking the code or undoing the fix. Say how it failed in your
+  report.
+- `.only` fails `pnpm verify`. Skip a test only when it needs the network or an account, with a
+  comment saying how to run it, like the `#[ignore]` test in `src-tauri/src/claude_code.rs`.
+- `expect(x).not.toBeNull()` alone proves little. It's fine as a guard before using `x`, or when
+  null is the failure you rule out and a nearby case pins the null, as for `matchScore`.
+- Change a test's expected value only when the owner asked for the new behavior. A refactor may
+  change how a test reaches the code, never its inputs or expected values.
+
 ## Conventions
 
-- Tests run on `EditorState`, without a DOM. Add one for each command, with undo when it touches
-  layers.
 - Commands return a `TransactionSpec`, or null when they don't apply.
 - Docs and UI text: plain words, short sentences, active voice.

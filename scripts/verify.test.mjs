@@ -62,12 +62,16 @@ describe("pnpm verify", () => {
   it("checks nothing when only docs changed since the last pass, and records that tree", () => {
     const dir = makeRepo();
     verify(dir);
-    writeFileSync(join(dir, "README.md"), "# App, with docs\n");
+    mkdirSync(join(dir, "docs"));
+    writeFileSync(join(dir, "docs/notes.md"), "Notes.\n");
     const result = verify(dir);
     expect(result).toMatchObject({ status: 0, runs: 0 });
-    expect(result.out).toContain("Only docs changed since the last pass (README.md)");
+    expect(result.out).toContain("Only docs changed since the last pass (docs/notes.md)");
     expect(recorded(dir)).toBe(snapshot(dir).fingerprint);
 
+    // The docs test reads the instructions, so they count as code.
+    writeFileSync(join(dir, "README.md"), "# App, with instructions\n");
+    expect(verify(dir)).toMatchObject({ status: 0, runs: 1 });
     mkdirSync(join(dir, "src"));
     writeFileSync(join(dir, "src/fixture.md"), "Code may read this.\n");
     expect(verify(dir)).toMatchObject({ status: 0, runs: 1 });
