@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
+    "verify": "node scripts/verify.mjs",
     "icons": "node scripts/icons.mjs"
   },
   "dependencies": {

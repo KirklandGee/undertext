@@ -12,13 +12,26 @@ What comes next, and the decisions behind the editor: the "Next" section of
 pnpm install
 pnpm dev                          # the editor in a plain browser: no files, fake AI results
 pnpm tauri dev                    # the desktop app, with live reload
-pnpm test                         # editor, format, Lab, and palette tests (vitest, no DOM)
-pnpm exec tsc --noEmit -p .       # type check
-cd src-tauri && cargo test --lib  # Rust tests
+pnpm verify                       # every check CI runs, in about 10 seconds
+pnpm test                         # only the vitest tests
 pnpm tauri build --bundles app    # src-tauri/target/release/bundle/macos/Undertext.app
 ```
 
-`cargo` must be on `PATH`. With Homebrew's rustup it lives in `/opt/homebrew/opt/rustup/bin`.
+`pnpm tauri` needs `cargo` on `PATH`. With Homebrew's rustup it lives in
+`/opt/homebrew/opt/rustup/bin`. `pnpm verify` finds it there on its own.
+
+## Done
+
+- Done means proven: a test that failed before the change and passes after, or the change seen
+  in the app. Reading the code or a passing compile is not proof.
+- Run `pnpm verify` after each change, and before you call anything done. It records the tree
+  when every check passes on it, or when only docs changed since its last pass.
+- It can't see the app window (WebKit), real AI calls, file dialogs, or the keychain. When a
+  change depends on them, check it in `pnpm tauri dev`, or say it is not verified.
+- Never weaken a check to pass it: no skipped or deleted tests, no loosened assertions. If a
+  check is wrong, stop and say why.
+- Report what ran, what it showed, and what you did not verify. How this works:
+  `docs/agents.md`.
 
 ## How the editor works
 

@@ -166,10 +166,13 @@ limits. If `claude` isn't in `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local
 ## Development
 
 ```bash
-pnpm test           # editor and format tests
+pnpm verify         # every check CI runs: types, tests, web build, Rust format, lint, and tests
+pnpm test           # only the vitest tests
 pnpm icons          # rebuild the app icons from brand/ (needs ImageMagick)
-cd src-tauri && cargo test
 ```
+
+`pnpm verify` is also what coding agents run to prove their work. See
+[docs/agents.md](docs/agents.md).
 
 The editor is [CodeMirror](https://codemirror.net) inside a [Tauri](https://tauri.app) app. The page
 text is plain Markdown; alternatives, ghosts, and versions are ranges kept beside it (`src/editor/layers.ts`).
