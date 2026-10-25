@@ -20,7 +20,7 @@ import {
 } from "../editor/commands";
 import { inlineText } from "../editor/format";
 import { layersOf } from "../editor/layers";
-import { toggleBold, toggleCode, toggleItalic, toggleLink, toggleStrike } from "../editor/keys";
+import { setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList, toggleStrike } from "../editor/keys";
 import { EditorInfo } from "../editor/setup";
 
 export interface PaletteCommand {
@@ -288,6 +288,13 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     { id: "code", title: "Inline code", shortcut: "⌘E", cmd: toggleCode },
     { id: "strike", title: "Strikethrough", shortcut: undefined, cmd: toggleStrike },
     { id: "link", title: "Link", shortcut: "⌘⇧K", cmd: toggleLink },
+    { id: "h1", title: "Heading 1", shortcut: "⌥⌘1", cmd: setHeading(1) },
+    { id: "h2", title: "Heading 2", shortcut: "⌥⌘2", cmd: setHeading(2) },
+    { id: "h3", title: "Heading 3", shortcut: "⌥⌘3", cmd: setHeading(3) },
+    { id: "plain", title: "Plain paragraph (no heading or list)", shortcut: "⌥⌘0", cmd: setHeading(0) },
+    { id: "bullets", title: "Bulleted list", shortcut: "⌘⇧8", cmd: toggleList("bullet") },
+    { id: "numbers", title: "Numbered list", shortcut: "⌘⇧7", cmd: toggleList("ordered") },
+    { id: "tasks", title: "Task list", shortcut: "⌘⇧9", cmd: toggleList("task") },
   ];
   for (const f of format) {
     add({ id: `format.${f.id}`, group: "Format", title: f.title, shortcut: f.shortcut, keywords: "markdown style", run: () => run(f.cmd) });

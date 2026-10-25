@@ -1,7 +1,7 @@
 import { deleteCharBackward, insertNewline } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
 import { deleteMarkupBackward, insertNewlineContinueMarkupCommand } from "@codemirror/lang-markdown";
-import { EditorSelection, EditorState, StateCommand } from "@codemirror/state";
+import { ChangeSpec, EditorSelection, EditorState, StateCommand, Transaction } from "@codemirror/state";
 import { Command, EditorView } from "@codemirror/view";
 import { SyntaxNode } from "@lezer/common";
 import { wordRangeAt } from "./commands";
@@ -191,6 +191,71 @@ export const toggleLink: StateCommand = ({ state, dispatch }) => {
   );
   return true;
 };
+
+// ---------------------------------------------------------------------------
+// Headings and lists: ⌥⌘1–3, ⌥⌘0, ⌘⇧7, ⌘⇧8, ⌘⇧9
+
+/** A heading or list marker after the indent, task box included. */
+const BLOCK_MARKER = /^(?:#{1,6}[ \t]+|(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)/;
+const LIST_KINDS = {
+  bullet: /^[-*+][ \t]+(?!\[[ xX]\])/,
+  ordered: /^\d+[.)][ \t]+/,
+  task: /^[-*+][ \t]+\[[ xX]\][ \t]+/,
+};
+export type ListKind = keyof typeof LIST_KINDS;
+
+/** The lines the selection touches. Blank ones count only for a bare cursor. */
+function selectedLines(state: EditorState) {
+  const lines = new Map<number, ReturnType<EditorState["doc"]["line"]>>();
+  for (const r of state.selection.ranges) {
+    for (let n = state.doc.lineAt(r.from).number; n <= state.doc.lineAt(r.to).number; n++) {
+      const line = state.doc.line(n);
+      if (line.text.trim() || r.empty) lines.set(n, line);
+    }
+  }
+  return [...lines.values()];
+}
+
+/** Replaces each line's heading or list marker. `marker(i)` gives the new one for the i-th line. */
+function setMarkers(state: EditorState, keepIndent: boolean, marker: (i: number) => string) {
+  return selectedLines(state).map((line, i) => {
+    const indent = /^[ \t]*/.exec(line.text)![0].length;
+    const old = BLOCK_MARKER.exec(line.text.slice(indent))?.[0].length ?? 0;
+    return { from: line.from + (keepIndent ? indent : 0), to: line.from + indent + old, insert: marker(i) };
+  });
+}
+
+/** Applies marker changes. A cursor right at a new marker moves after it. */
+function applyMarkers(state: EditorState, dispatch: (tr: Transaction) => void, specs: ChangeSpec[]) {
+  const changes = state.changes(specs);
+  dispatch(
+    state.update({ changes, selection: state.selection.map(changes, 1), scrollIntoView: true, userEvent: "input.format" }),
+  );
+}
+
+/** Makes the lines a heading of `level`, or plain text with 0. The same level again makes them plain. */
+export function setHeading(level: number): StateCommand {
+  return ({ state, dispatch }) => {
+    const lines = selectedLines(state);
+    if (!lines.length) return false;
+    const same = level > 0 && lines.every((l) => new RegExp(`^#{${level}}[ \\t]`).test(l.text.trimStart()));
+    const marker = level > 0 && !same ? `${"#".repeat(level)} ` : "";
+    applyMarkers(state, dispatch, setMarkers(state, false, () => marker));
+    return true;
+  };
+}
+
+/** Makes the lines a list of `kind`, numbered from 1. If they already are one, makes them plain. */
+export function toggleList(kind: ListKind): StateCommand {
+  return ({ state, dispatch }) => {
+    const lines = selectedLines(state);
+    if (!lines.length) return false;
+    const already = lines.every((l) => LIST_KINDS[kind].test(l.text.trimStart()));
+    const marker = (i: number) => (already ? "" : kind === "bullet" ? "- " : kind === "task" ? "- [ ] " : `${i + 1}. `);
+    applyMarkers(state, dispatch, setMarkers(state, true, marker));
+    return true;
+  };
+}
 
 /** Runs a state command from a key handler, keeping focus in the editor. */
 export const runCommand = (view: EditorView, cmd: StateCommand) =>

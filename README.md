@@ -78,6 +78,8 @@ storage, and answers AI requests with fake results so you can try the UI.
 | ⌘⇧L | Show or hide the layers (same as clicking the word count) |
 | ⌘B ⌘I ⌘E | Bold, italic, inline code. On a selection, a word, or formatted text (removes it) |
 | ⌘⇧K | Link: wraps the selection as `[text]()`. Pasting a URL over a selection also makes a link. |
+| ⌥⌘1 ⌥⌘2 ⌥⌘3 ⌥⌘0 | Heading 1, 2, 3, or back to plain text. The same heading again removes it. |
+| ⌘⇧8 ⌘⇧7 ⌘⇧9 | Bulleted, numbered, or task list. The same list again removes it. |
 | ⌘-click | Open a link |
 | ⌘O, ⌘S, ⌘⇧S, ⌘N | Open, save, save as, new |
 | Right click | Context menu. Shift + right click shows the system menu with spelling fixes. |

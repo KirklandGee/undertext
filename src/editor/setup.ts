@@ -18,7 +18,7 @@ import {
 } from "./commands";
 import { Layers, MARKDOWN_EXTENSIONS, serializePage } from "./format";
 import { inkLayers } from "./ink";
-import { backspace, enter, toggleBold, toggleCode, toggleItalic, toggleLink } from "./keys";
+import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
 import { layers, layersField, layersOf } from "./layers";
 import { livePreview } from "./preview";
@@ -125,6 +125,13 @@ export function createEditorState(text: string, initial: Layers, handlers?: () =
           { key: "Mod-i", run: toggleItalic },
           { key: "Mod-e", run: toggleCode },
           { key: "Shift-Mod-k", run: toggleLink },
+          { key: "Mod-Alt-1", run: setHeading(1) },
+          { key: "Mod-Alt-2", run: setHeading(2) },
+          { key: "Mod-Alt-3", run: setHeading(3) },
+          { key: "Mod-Alt-0", run: setHeading(0) },
+          { key: "Shift-Mod-7", run: toggleList("ordered") },
+          { key: "Shift-Mod-8", run: toggleList("bullet") },
+          { key: "Shift-Mod-9", run: toggleList("task") },
           { key: "Mod-/", run: ghostOrKeep },
           { key: "Shift-Mod-a", run: call("alternatives") },
           { key: "Shift-Mod-g", run: call("aiAlternatives") },

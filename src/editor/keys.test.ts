@@ -2,7 +2,7 @@ import { EditorSelection, EditorState, StateCommand } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { describe, expect, it } from "vitest";
 import { parsePage } from "./format";
-import { backspace, enter, toggleBold, toggleItalic, toggleLink } from "./keys";
+import { backspace, enter, setHeading, toggleBold, toggleItalic, toggleLink, toggleList } from "./keys";
 import { layersOf } from "./layers";
 import { createEditorState } from "./setup";
 
@@ -87,5 +87,29 @@ describe("formatting", () => {
   it("makes and removes a link", () => {
     expect(run(stateFor("see «this» page"), toggleLink).text).toBe("see [this](‸) page");
     expect(run(stateFor("see [th‸is](https://x.y) page"), toggleLink).text).toBe("see th‸is page");
+  });
+});
+
+describe("headings and lists", () => {
+  it("sets, changes, and removes a heading", () => {
+    const h2 = run(stateFor("Ti‸tle"), setHeading(2));
+    expect(h2.text).toBe("## Ti‸tle");
+    expect(run(h2.state, setHeading(1)).text).toBe("# Ti‸tle");
+    expect(run(h2.state, setHeading(2)).text).toBe("Ti‸tle");
+    expect(run(stateFor("- Ti‸tle"), setHeading(1)).text).toBe("# Ti‸tle");
+  });
+
+  it("makes lines a list, and back", () => {
+    const bullets = run(stateFor("«one\ntwo»"), toggleList("bullet"));
+    expect(bullets.text).toBe("- «one\n- two»");
+    expect(run(bullets.state, toggleList("bullet")).text).toBe("«one\ntwo»");
+    expect(run(bullets.state, toggleList("ordered")).text).toBe("1. «one\n2. two»");
+    expect(run(stateFor("  - o‸ne"), toggleList("task")).text).toBe("  - [ ] o‸ne");
+    expect(run(stateFor("# Ti‸tle"), toggleList("bullet")).text).toBe("- Ti‸tle");
+  });
+
+  it("starts a list on an empty line and skips blank lines in a selection", () => {
+    expect(run(stateFor("‸"), toggleList("bullet")).text).toBe("- ‸");
+    expect(run(stateFor("«a\n\nb»"), toggleList("ordered")).text).toBe("1. «a\n\n2. b»");
   });
 });
