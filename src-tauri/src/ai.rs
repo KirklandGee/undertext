@@ -37,7 +37,11 @@ fn api_key() -> Option<String> {
             return Some(key);
         }
     }
-    keychain().ok()?.get_password().ok().filter(|k| !k.trim().is_empty())
+    keychain()
+        .ok()?
+        .get_password()
+        .ok()
+        .filter(|k| !k.trim().is_empty())
 }
 
 #[tauri::command]
@@ -157,7 +161,9 @@ async fn send(
     if status.is_success() {
         return Ok(Ok(value));
     }
-    let message = value["error"]["message"].as_str().unwrap_or("unknown error");
+    let message = value["error"]["message"]
+        .as_str()
+        .unwrap_or("unknown error");
     Ok(Err(match status.as_u16() {
         401 => "no_key: The API key was rejected. Check it and try again.".to_string(),
         429 => format!("api: Rate limited. Try again in a moment. ({message})"),
@@ -169,10 +175,14 @@ async fn send(
 fn parse_response(response: &Value) -> Result<Value, String> {
     match response["stop_reason"].as_str() {
         Some("refusal") => {
-            let why = response["stop_details"]["explanation"].as_str().unwrap_or("no reason given");
+            let why = response["stop_details"]["explanation"]
+                .as_str()
+                .unwrap_or("no reason given");
             return Err(format!("refused: Claude declined this request ({why})."));
         }
-        Some("max_tokens") => return Err("api: The answer was cut off. Try a shorter selection.".into()),
+        Some("max_tokens") => {
+            return Err("api: The answer was cut off. Try a shorter selection.".into())
+        }
         _ => {}
     }
     let text = response["content"]
@@ -223,7 +233,10 @@ mod tests {
 
     #[test]
     fn reports_refusals() {
-        let response = json!({"stop_reason": "refusal", "stop_details": {"explanation": "x"}, "content": []});
-        assert!(parse_response(&response).unwrap_err().starts_with("refused:"));
+        let response =
+            json!({"stop_reason": "refusal", "stop_details": {"explanation": "x"}, "content": []});
+        assert!(parse_response(&response)
+            .unwrap_err()
+            .starts_with("refused:"));
     }
 }

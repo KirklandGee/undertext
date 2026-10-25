@@ -9,11 +9,17 @@ const DOCUMENT_EXTENSIONS: [&str; 3] = ["md", "markdown", "txt"];
 
 fn document_path(path: &str) -> Result<&Path, String> {
     let target = Path::new(path);
-    let ext = target.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     if DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
         Ok(target)
     } else {
-        Err(format!("Undertext only opens and saves .md, .markdown, and .txt files: {path}"))
+        Err(format!(
+            "Undertext only opens and saves .md, .markdown, and .txt files: {path}"
+        ))
     }
 }
 
@@ -50,7 +56,9 @@ fn write_text(path: String, contents: String, expected: Option<String>) -> Resul
 /// Only web and mail links, with no spaces or control characters.
 fn safe_url(url: &str) -> Result<&str, String> {
     let lower = url.to_lowercase();
-    let scheme_ok = ["http://", "https://", "mailto:"].iter().any(|s| lower.starts_with(s));
+    let scheme_ok = ["http://", "https://", "mailto:"]
+        .iter()
+        .any(|s| lower.starts_with(s));
     if scheme_ok && !url.chars().any(|c| c.is_whitespace() || c.is_control()) {
         Ok(url)
     } else {
@@ -115,7 +123,10 @@ mod tests {
         assert!(write_text(path.clone(), "edited".into(), Some("mine".into())).is_ok());
         // Another app changed it: refused, and the file keeps their text.
         fs::write(&file, "theirs").unwrap();
-        assert_eq!(write_text(path.clone(), "again".into(), Some("edited".into())), Err(CHANGED_ON_DISK.into()));
+        assert_eq!(
+            write_text(path.clone(), "again".into(), Some("edited".into())),
+            Err(CHANGED_ON_DISK.into())
+        );
         assert_eq!(fs::read_to_string(&file).unwrap(), "theirs");
         // Without `expected` (Keep mine), it overwrites.
         assert!(write_text(path.clone(), "again".into(), None).is_ok());
