@@ -90,6 +90,8 @@ storage, and answers AI requests with fake results so you can try the UI.
 - If another app changes the file, Undertext reloads it when you come back to the window. If you also
   have edits, it asks which version to keep instead. A save never overwrites the other app's change
   without asking.
+- Letters typed right after an alternative join it, so "elephant" can become "elephants". A space or
+  punctuation starts plain text after it.
 - ⌘K → "Open the welcome document" brings back the built-in tour at any time.
 
 ## File format
@@ -158,7 +160,6 @@ limits. If `claude` isn't in `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local
 
 - A ghost that covers only part of an alternative is lost when you save.
 - Tables, images, and HTML show as Markdown source, not rendered.
-- Typing at the end of an alternative adds plain text after it, not to it.
 
 ## Development
 

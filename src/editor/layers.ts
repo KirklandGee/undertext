@@ -1,5 +1,5 @@
 import { invertedEffects } from "@codemirror/commands";
-import { ChangeDesc, EditorState, Extension, Range, StateEffect, StateField, Text } from "@codemirror/state";
+import { ChangeDesc, ChangeSet, EditorState, Extension, Range, StateEffect, StateField, Text } from "@codemirror/state";
 import { Decoration, EditorView } from "@codemirror/view";
 import { Alt, Layers, newId } from "./format";
 
@@ -9,7 +9,7 @@ import { Alt, Layers, newId } from "./format";
 
 export const emptyLayers: Layers = { alts: [], ghosts: [], versions: [] };
 
-/** Moves every range through a change. Alternatives and ghosts don't grow when you type at their edges. */
+/** Moves every range through a change. Alternatives and ghosts don't grow at their edges (but see joinTypedLetters). */
 export function mapLayers(l: Layers, changes: ChangeDesc): Layers {
   if (changes.empty || (!l.alts.length && !l.ghosts.length && !l.versions.length)) return l;
   return {
@@ -30,12 +30,30 @@ export const layersField = StateField.define<Layers>({
   create: () => emptyLayers,
   update(value, tr) {
     let next = mapLayers(value, tr.changes);
+    if (tr.isUserEvent("input.type")) next = joinTypedLetters(value, next, tr.changes);
     for (const e of tr.effects) if (e.is(setLayers)) next = e.value;
     return next === value ? value : normalize(next, tr.newDoc);
   },
 });
 
 export const layersOf = (state: EditorState) => state.field(layersField);
+
+const WORD = /^[\p{L}\p{N}'’-]+$/u;
+
+/**
+ * Letters typed right at the end of an alternative join it, so "elephant"
+ * can become "elephants". A space or punctuation starts plain text after it.
+ * `before` is the layers before the change, `after` the same layers mapped.
+ */
+function joinTypedLetters(before: Layers, after: Layers, changes: ChangeSet): Layers {
+  const grow = new Map<string, number>();
+  changes.iterChanges((fromA, toA, _fromB, toB, inserted) => {
+    if (fromA !== toA || !WORD.test(inserted.toString())) return;
+    for (const a of before.alts) if (a.to === fromA) grow.set(a.id, toB);
+  });
+  if (!grow.size) return after;
+  return { ...after, alts: after.alts.map((a) => (grow.has(a.id) ? { ...a, to: grow.get(a.id)! } : a)) };
+}
 
 /**
  * Keeps the layers in shapes the file can hold. An alternative never spans a

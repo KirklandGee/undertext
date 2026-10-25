@@ -66,7 +66,20 @@ describe("alternatives", () => {
     expect(state.doc.toString()).toBe("the strugglse here");
   });
 
-  it("doesn't grow when you type at its edges", () => {
+  it("takes letters typed at its end, but not a space or text at its start", () => {
+    let state = stateFor("an {{elephant|owl}} here\n");
+    const alt = () => layersOf(state).alts[0];
+    const type = (pos: number, text: string) =>
+      (state = state.update({ changes: { from: pos, insert: text }, userEvent: "input.type" }).state);
+    type(alt().to, "s");
+    expect(save(state)).toBe("an {{elephants|owl}} here\n");
+    type(alt().to, " ");
+    type(alt().to + 1, "big");
+    type(alt().from, "x");
+    expect(save(state)).toBe("an x{{elephants|owl}} big here\n");
+  });
+
+  it("doesn't grow when a change lands at its edges", () => {
     let state = stateFor("a {{b|c}} d\n");
     const alt = layersOf(state).alts[0];
     state = state.update({ changes: [{ from: alt.from, insert: "x" }, { from: alt.to, insert: "y" }] }).state;
