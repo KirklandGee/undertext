@@ -254,6 +254,106 @@ button:focus-visible {
   text-decoration: none;
 }
 
+/* ------------------------------------------------------------------------ */
+/* CodeMirror live preview (codemirror branch) */
+
+.page-text.cm-editor .cm-selectionBackground {
+  background: var(--selection) !important;
+}
+
+.cm-line.md-blank {
+  line-height: 1.35em;
+}
+
+.md-h .md-marker,
+.md-strong .md-marker,
+.md-marker .md-strong {
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.md-code {
+  color: var(--heading);
+  background: var(--line);
+  border-radius: 3px;
+}
+
+.md-code .md-marker {
+  background: none;
+}
+
+.md-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-dim);
+  text-underline-offset: 3px;
+}
+
+.cm-line.md-quote {
+  border-left: 2px solid var(--line);
+  padding-left: 1ch;
+  color: var(--fg-dim);
+  font-style: italic;
+}
+
+.cm-line.md-codeblock {
+  background: var(--panel);
+  color: var(--heading);
+}
+
+.cm-line.md-hr {
+  background: linear-gradient(var(--line), var(--line)) center / 100% 1px no-repeat;
+}
+
+.md-bullet {
+  color: var(--fg-dim);
+}
+
+.md-task {
+  margin: 0 0.4ch 0 0;
+  vertical-align: -1px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Until the ink layer is ported: a plain underline under alternatives. */
+.layers .alt:not([data-count="1"]) {
+  text-decoration: underline;
+  text-decoration-color: var(--underline);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* Until the ink layer is ported: a plain gutter line beside paragraph versions. */
+.layers .cm-line.has-versions {
+  position: relative;
+}
+
+.layers .cm-line.has-versions::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+  background: var(--line);
+}
+
+.layers .cm-line.has-versions.modified::before {
+  background: var(--accent-dim);
+}
+
+.spike-source pre {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .ghost {
   opacity: 0.13;
   transition: opacity 0.2s;

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "A local writing tool with alternatives, ghosts, and overflow under the text",
   "license": "MIT",
-  "author": "Ernesto Garc\u00eda",
+  "author": "Ernesto García",
   "repository": {
     "type": "git",
     "url": "https://github.com/klipstack/undertext"
@@ -19,6 +19,13 @@
     "icons": "node scripts/icons.mjs"
   },
   "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.14",
+    "@lezer/common": "1.5.3",
+    "@lezer/markdown": "1.8.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "2.8.1",
     "prosemirror-commands": "1.7.2",
