@@ -47,7 +47,15 @@ import { parsePage } from "./editor/format";
 import { clearLab, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
 import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layers";
 import { createEditorState, describe, EditorHandlers, EditorInfo, pageMarkdown } from "./editor/setup";
-import { confirmDiscard, isTauri, openDocument, readDocument, saveDocument } from "./lib/files";
+import {
+  askReloadChanged,
+  ChangedOnDisk,
+  confirmDiscard,
+  isTauri,
+  openDocument,
+  readDocument,
+  saveDocument,
+} from "./lib/files";
 import { buildCommands, PaletteCommand } from "./palette/commands";
 import { WELCOME } from "./welcome";
 
@@ -63,6 +71,8 @@ interface FileRef {
 interface Session extends FileRef {
   md: string;
   savedMd: string;
+  /** What the file held when the page last read or wrote it. */
+  disk?: string | null;
 }
 
 function readJSON<T>(key: string): T | null {
@@ -89,6 +99,10 @@ export default function App() {
   const overflowInputRef = useRef<HTMLTextAreaElement>(null);
   const overflowRef = useRef("");
   const savedRef = useRef("");
+  /** What the file on disk held when the page last read or wrote it. Null when unknown or unsaved. */
+  const diskRef = useRef<string | null>(null);
+  /** True while the "changed in another app" question is open. */
+  const conflictRef = useRef(false);
   const fileRef = useRef<FileRef>({ path: null, name: "Untitled.md" });
   const toastTimer = useRef<number | undefined>(undefined);
   const paletteReturnRef = useRef<Element | null>(null);
@@ -140,8 +154,12 @@ export default function App() {
     setFileState(next);
   };
 
-  /** Loads Markdown into a fresh editor state. Without `savedMd` the content counts as saved. */
-  const loadMarkdown = (md: string, next: FileRef, savedMd?: string) => {
+  /**
+   * Loads Markdown into a fresh editor state. Without `savedMd` the content
+   * counts as saved. Without `disk`, a file with a path holds `md` on disk.
+   */
+  const loadMarkdown = (md: string, next: FileRef, savedMd?: string, disk?: string | null) => {
+    diskRef.current = disk === undefined ? (next.path ? md : null) : disk;
     const { text, alts, ghosts, versions, overflow: extra } = parsePage(md);
     const v = view();
     v.setState(createEditorState(text, { alts, ghosts, versions }, () => handlersRef.current));
@@ -158,26 +176,74 @@ export default function App() {
   // -------------------------------------------------------------------------
   // Files
 
-  const doSave = async (saveAs: boolean, md = currentMd()) => {
+  /**
+   * Saves, and returns whether the page is now safe to leave. If another app
+   * changed the file, asks first (see resolveConflict). `force` overwrites.
+   */
+  const doSave = async (saveAs: boolean, md = currentMd(), force = false): Promise<boolean> => {
     try {
-      const result = await saveDocument(saveAs ? null : fileRef.current.path, fileRef.current.name, md);
-      if (!result) return;
+      const path = saveAs ? null : fileRef.current.path;
+      const expected = force ? undefined : (diskRef.current ?? undefined);
+      const result = await saveDocument(path, fileRef.current.name, md, expected);
+      if (!result) return false;
       savedRef.current = md;
+      diskRef.current = result.path ? md : null;
       setFile(result);
       setDirty(currentMd() !== md);
-      writeJSON(SESSION_KEY, { ...result, md, savedMd: md } satisfies Session);
+      writeJSON(SESSION_KEY, { ...result, md, savedMd: md, disk: diskRef.current } satisfies Session);
       if (!isTauri) flash("Saved in this browser session");
+      return true;
+    } catch (err) {
+      if (err instanceof ChangedOnDisk) return resolveConflict();
+      flash(String(err));
+      return false;
+    }
+  };
+
+  /** Takes the file's new text from disk, keeping the caret where it was. */
+  const reloadFromDisk = (content: string) => {
+    const head = view().state.selection.main.head;
+    loadMarkdown(content, fileRef.current);
+    view().dispatch({ selection: EditorSelection.cursor(Math.min(head, view().state.doc.length)) });
+  };
+
+  /** Another app changed the file: load their version, or keep ours and overwrite it. */
+  const resolveConflict = async (): Promise<boolean> => {
+    const path = fileRef.current.path;
+    if (conflictRef.current || !path) return false;
+    conflictRef.current = true;
+    try {
+      if (await askReloadChanged(fileRef.current.name)) {
+        reloadFromDisk((await readDocument(path)).content);
+        flash("Loaded the version from the other app");
+        return true;
+      }
+      return await doSave(false, currentMd(), true);
     } catch (err) {
       flash(String(err));
+      return false;
+    } finally {
+      conflictRef.current = false;
     }
+  };
+
+  /** When the window comes back: take changes made in another app, or ask if there are edits here too. */
+  const checkDisk = async () => {
+    const path = fileRef.current.path;
+    if (!path || !isTauri || conflictRef.current || diskRef.current === null) return;
+    const disk = await readDocument(path).catch(() => null);
+    if (!disk || disk.content === diskRef.current || fileRef.current.path !== path) return;
+    if (currentMd() !== savedRef.current) {
+      await resolveConflict();
+      return;
+    }
+    reloadFromDisk(disk.content);
+    flash("Reloaded: the file changed in another app");
   };
 
   const okToLeave = async () => {
     if (currentMd() === savedRef.current) return true;
-    if (fileRef.current.path) {
-      await doSave(false);
-      return true;
-    }
+    if (fileRef.current.path) return doSave(false);
     return confirmDiscard();
   };
 
@@ -569,7 +635,7 @@ export default function App() {
         }
       }
       if (viewRef.current !== v) return;
-      if (session) loadMarkdown(session.md, { path: session.path, name: session.name }, session.savedMd);
+      if (session) loadMarkdown(session.md, { path: session.path, name: session.name }, session.savedMd, session.disk ?? null);
       else loadMarkdown(WELCOME, { path: null, name: "Welcome.md" });
       v.focus();
     })();
@@ -589,7 +655,7 @@ export default function App() {
       const md = currentMd();
       const isDirty = md !== savedRef.current;
       setDirty(isDirty);
-      writeJSON(SESSION_KEY, { ...fileRef.current, md, savedMd: savedRef.current } satisfies Session);
+      writeJSON(SESSION_KEY, { ...fileRef.current, md, savedMd: savedRef.current, disk: diskRef.current } satisfies Session);
       if (isDirty && fileRef.current.path && isTauri) void doSave(false, md);
     }, 700);
     return () => window.clearTimeout(timer);
@@ -635,6 +701,14 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => keysRef.current(e);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const focusRef = useRef<() => void>(() => {});
+  focusRef.current = () => void checkDisk();
+  useEffect(() => {
+    const onFocus = () => focusRef.current();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   // -------------------------------------------------------------------------

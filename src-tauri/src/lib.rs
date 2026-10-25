@@ -22,11 +22,26 @@ fn read_text(path: String) -> Result<String, String> {
     fs::read_to_string(document_path(&path)?).map_err(|e| format!("Could not read {path}: {e}"))
 }
 
+/// The error `write_text` returns when the file no longer holds `expected`.
+const CHANGED_ON_DISK: &str = "changed_on_disk";
+
 /// Writes to a temp file next to the target, then renames it, so a crash
-/// never leaves a half-written document.
+/// never leaves a half-written document. With `expected`, it first checks
+/// that the file still holds what the page last read or wrote, so a change
+/// made in another app is never overwritten without asking. A missing file
+/// is written again.
 #[tauri::command]
-fn write_text(path: String, contents: String) -> Result<(), String> {
+fn write_text(path: String, contents: String, expected: Option<String>) -> Result<(), String> {
     let target = document_path(&path)?;
+    if let Some(expected) = expected {
+        match fs::read_to_string(target) {
+            Ok(current) if current != expected => return Err(CHANGED_ON_DISK.into()),
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("Could not read {path}: {e}"))
+            }
+            _ => {}
+        }
+    }
     let tmp = target.with_extension("undertext-tmp");
     fs::write(&tmp, contents).map_err(|e| format!("Could not write {path}: {e}"))?;
     fs::rename(&tmp, target).map_err(|e| format!("Could not save {path}: {e}"))
@@ -86,6 +101,30 @@ mod tests {
         assert!(document_path("/Users/me/.zshrc").is_err());
         assert!(document_path("/Users/me/.ssh/id_ed25519").is_err());
         assert!(document_path("/tmp/notes.md.sh").is_err());
+    }
+
+    #[test]
+    fn never_overwrites_a_change_from_another_app() {
+        let dir = std::env::temp_dir().join(format!("undertext-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("note.md");
+        let path = file.to_string_lossy().to_string();
+        fs::write(&file, "mine").unwrap();
+
+        // Unchanged since the page read it: the save goes through.
+        assert!(write_text(path.clone(), "edited".into(), Some("mine".into())).is_ok());
+        // Another app changed it: refused, and the file keeps their text.
+        fs::write(&file, "theirs").unwrap();
+        assert_eq!(write_text(path.clone(), "again".into(), Some("edited".into())), Err(CHANGED_ON_DISK.into()));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "theirs");
+        // Without `expected` (Keep mine), it overwrites.
+        assert!(write_text(path.clone(), "again".into(), None).is_ok());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "again");
+        // A deleted file is written again.
+        fs::remove_file(&file).unwrap();
+        assert!(write_text(path, "back".into(), Some("again".into())).is_ok());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "back");
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

@@ -87,6 +87,9 @@ storage, and answers AI requests with fake results so you can try the UI.
 - Hover cycling only works after you move the mouse. Typing or clicking turns it off until the mouse
   moves again, so arrow keys never cycle by accident.
 - Files that have a path save automatically. Untitled documents survive restarts in local storage.
+- If another app changes the file, Undertext reloads it when you come back to the window. If you also
+  have edits, it asks which version to keep instead. A save never overwrites the other app's change
+  without asking.
 - ⌘K → "Open the welcome document" brings back the built-in tour at any time.
 
 ## File format
@@ -155,7 +158,6 @@ limits. If `claude` isn't in `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local
 
 - A ghost that covers only part of an alternative is lost when you save.
 - Tables, images, and HTML show as Markdown source, not rendered.
-- Autosave overwrites the file even if another editor changed it.
 - Typing at the end of an alternative adds plain text after it, not to it.
 
 ## Development
