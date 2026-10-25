@@ -1,6 +1,6 @@
+import { EditorSelection, TransactionSpec } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
-import { TextSelection, Transaction } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
 import { AltPanel, AltTab } from "./components/AltPanel";
 import { AiError, aiCancel, aiClearKey, aiKeyStatus, aiSetKey } from "./ai/client";
 import {
@@ -25,26 +25,28 @@ import { Icon } from "./components/Icon";
 import {
   addAiAlternatives,
   addAltVariant,
-  altAtPos,
+  altAt,
   altInSelection,
+  blockAt,
   cleanupSingleAlts,
   createAlt,
-  forkParagraph,
-  markRangeAt,
-  paragraphAt,
+  dropAlt,
+  findVersion,
+  forkVersion,
+  ghostAt,
   removeAltVariant,
-  removeParagraphVariant,
+  removeVersionVariant,
   reviveAt,
   setAltActive,
-  setParagraphActive,
+  setVersionActive,
   takeSelectionText,
   toggleGhost,
   wordRangeAt,
 } from "./editor/commands";
+import { parsePage } from "./editor/format";
 import { clearLab, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
-import { parseFile, serializeFile } from "./editor/markdown";
-import { schema } from "./editor/schema";
-import { createState, describe, EditorHandlers, EditorInfo } from "./editor/setup";
+import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layers";
+import { createEditorState, describe, EditorHandlers, EditorInfo, pageMarkdown } from "./editor/setup";
 import { confirmDiscard, isTauri, openDocument, readDocument, saveDocument } from "./lib/files";
 import { buildCommands, PaletteCommand } from "./palette/commands";
 import { WELCOME } from "./welcome";
@@ -117,8 +119,8 @@ export default function App() {
   // Helpers
 
   const view = () => viewRef.current!;
-  const dispatch = (tr: Transaction | null | undefined) => tr && view().dispatch(tr);
-  const currentMd = () => serializeFile(view().state.doc, overflowRef.current);
+  const dispatch = (spec: TransactionSpec | null | undefined) => spec && view().dispatch(spec);
+  const currentMd = () => pageMarkdown(view().state, overflowRef.current);
 
   const flash = (message: string) => {
     setToast(message);
@@ -140,14 +142,15 @@ export default function App() {
 
   /** Loads Markdown into a fresh editor state. Without `savedMd` the content counts as saved. */
   const loadMarkdown = (md: string, next: FileRef, savedMd?: string) => {
-    const { doc, overflow: extra } = parseFile(md);
+    const { text, alts, ghosts, versions, overflow: extra } = parsePage(md);
     const v = view();
-    v.updateState(createState(doc, () => handlersRef.current));
+    v.setState(createEditorState(text, { alts, ghosts, versions }, () => handlersRef.current));
     overflowRef.current = extra;
     setOverflowState(extra);
     setFile(next);
-    savedRef.current = savedMd ?? serializeFile(doc, extra);
-    setDirty(serializeFile(doc, extra) !== savedRef.current);
+    const loaded = pageMarkdown(v.state, extra);
+    savedRef.current = savedMd ?? loaded;
+    setDirty(loaded !== savedRef.current);
     setInfo(describe(v.state));
     setAltOpen(false);
   };
@@ -207,18 +210,18 @@ export default function App() {
   const openAlternatives = () => {
     const v = view();
     const { state } = v;
-    const sel = state.selection;
-    const p = paragraphAt(state);
+    const sel = state.selection.main;
+    const block = blockAt(state);
     setAltOpen(true);
-    if (!sel.empty && p && sel.from <= p.pos + 1 && sel.to >= p.pos + p.node.nodeSize - 1) {
+    if (!sel.empty && block && sel.from <= block.from && sel.to >= block.to) {
       setTab("paragraph");
       return;
     }
     setTab("inline");
     if (!altInSelection(state)) {
-      const range = sel.empty ? wordRangeAt(state.doc, sel.from) : { from: sel.from, to: sel.to };
+      const range = sel.empty ? wordRangeAt(state, sel.from) : { from: sel.from, to: sel.to };
       const created = range ? createAlt(state, range.from, range.to) : null;
-      if (created?.tr.docChanged) v.dispatch(created.tr);
+      if (created) v.dispatch(created.spec);
     }
     setFocusKey((k) => k + 1);
   };
@@ -281,12 +284,12 @@ export default function App() {
       flash("Put the cursor on a word or select a phrase first");
       return;
     }
-    const id = r.mark.attrs.id as string;
+    const { id } = r;
     void runAi("Suggesting alternatives", async (live) => {
       const texts = await suggestAlternatives(view().state, id);
       if (!live()) return;
-      const tr = addAiAlternatives(view().state, id, texts);
-      if (tr) dispatch(tr);
+      const spec = addAiAlternatives(view().state, id, texts);
+      if (spec) dispatch(spec);
       else flash("No new alternatives");
     });
   };
@@ -300,13 +303,13 @@ export default function App() {
     void runAi("Checking typos and punctuation", async (live) => {
       const fixes = await findFixes(view().state);
       if (!live()) return;
-      const { tr, count } = applyFixes(view().state, fixes);
+      const { spec, count } = applyFixes(view().state, fixes);
       closeLab();
       if (!count) {
         flash("No typos found");
         return;
       }
-      dispatch(tr);
+      dispatch(spec);
       flash(`${count} ${count === 1 ? "fix" : "fixes"} added as alternatives. ⌥L visits each. ⌥K restores your text.`);
     });
 
@@ -317,11 +320,11 @@ export default function App() {
       if (!live()) return;
       closeLab();
       if (!spans.length) {
-        dispatch(clearLab(view().state.tr));
+        dispatch(clearLab());
         flash(`${c.label}: nothing to mark`);
         return;
       }
-      dispatch(setLab(view().state.tr, "marks", { label: c.label }, spans));
+      dispatch(setLab("marks", { label: c.label }, spans));
     });
   };
 
@@ -335,7 +338,7 @@ export default function App() {
         flash("Nothing to cut");
         return;
       }
-      dispatch(setLab(view().state.tr, "cuts", { label: t.label, percent: t.percent }, spans));
+      dispatch(setLab("cuts", { label: t.label, percent: t.percent }, spans));
     });
   };
 
@@ -344,8 +347,8 @@ export default function App() {
     dispatch(jumpToLabSpan(view().state, 1));
   };
 
-  const finishLab = (tr: Transaction | null) => {
-    dispatch(tr);
+  const finishLab = (spec: TransactionSpec | null) => {
+    dispatch(spec);
     view().focus();
   };
 
@@ -355,7 +358,7 @@ export default function App() {
       flash("Select some text to stash it");
       return;
     }
-    dispatch(taken.tr.scrollIntoView());
+    dispatch(taken.spec);
     const text = taken.text.trim();
     setOverflow((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text));
     setOverflowOpen(true);
@@ -416,17 +419,16 @@ export default function App() {
 
   const fork = () => {
     const v = view();
-    const p = paragraphAt(v.state);
-    if (!p) return;
-    dispatch(forkParagraph(v.state, p.pos));
-    const n: number = v.state.doc.nodeAt(p.pos)?.attrs.variants?.length ?? 1;
+    const block = blockAt(v.state);
+    if (!block) return;
+    dispatch(forkVersion(v.state, block.from));
+    const n = findVersion(v.state, block.from)?.variants.length ?? 1;
     flash(`Version ${n} of ${n}. Edit it in place. ⌥⇧J ⌥⇧K switches.`);
     v.focus();
   };
 
   const placeCaret = (pos: number) => {
-    const v = view();
-    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, pos)));
+    view().dispatch({ selection: EditorSelection.cursor(pos) });
   };
 
   const handlersRef = useRef<EditorHandlers>(null!);
@@ -442,7 +444,7 @@ export default function App() {
         return true;
       }
       if (labState(view().state).kind === "marks") {
-        finishLab(clearLab(view().state.tr));
+        finishLab(clearLab());
         return true;
       }
       if (!altOpen) return false;
@@ -457,12 +459,12 @@ export default function App() {
   const buildMenu = (at: number | null, x: number, y: number): MenuState | null => {
     const v = view();
     const { state } = v;
-    const sel = state.selection;
+    const sel = state.selection.main;
     const items: MenuItem[] = [];
     const hasSelection = !sel.empty && (at === null || (at >= sel.from && at <= sel.to));
 
     if (hasSelection) {
-      const ghosted = state.doc.rangeHasMark(sel.from, sel.to, schema.marks.ghost);
+      const ghosted = layersOf(state).ghosts.some((g) => g.from < sel.to && g.to > sel.from);
       items.push(
         { label: "Alternatives for selection", shortcut: "⌘⇧A", run: openAlternatives },
         { label: "AI alternatives for selection", shortcut: "⌘⇧G", run: aiAlternatives },
@@ -470,17 +472,17 @@ export default function App() {
           label: ghosted ? "Revive" : "Ghost it",
           shortcut: "⌘/",
           run: () => {
-            toggleGhost(v.state, v.dispatch);
+            toggleGhost(v);
             v.focus();
           },
         },
         { label: "Stash in Overflow", shortcut: "⌘⇧X", run: stash },
       );
     } else if (at !== null) {
-      if (markRangeAt(state.doc, at, schema.marks.ghost)) {
+      if (ghostAt(state, at)) {
         items.push({ label: "Revive", shortcut: "⌘/", run: () => dispatch(reviveAt(v.state, at)) });
       }
-      const altRange = altAtPos(state.doc, at);
+      const altRange = altAt(state, at);
       if (altRange) {
         items.push(
           {
@@ -493,18 +495,18 @@ export default function App() {
           },
           {
             label: "Remove alternatives",
-            run: () => dispatch(v.state.tr.removeMark(altRange.from, altRange.to, schema.marks.alt)),
+            run: () => dispatch(dropAlt(v.state, altRange.id)),
           },
         );
       } else {
-        const word = wordRangeAt(state.doc, at);
+        const word = wordRangeAt(state, at);
         if (word) {
-          const text = state.doc.textBetween(word.from, word.to);
+          const text = state.doc.sliceString(word.from, word.to);
           items.push({
             label: `Alternatives for “${text.length > 18 ? `${text.slice(0, 18)}…` : text}”`,
             shortcut: "⌘⇧A",
             run: () => {
-              v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, word.from, word.to)));
+              v.dispatch({ selection: EditorSelection.range(word.from, word.to) });
               openAlternatives();
             },
           });
@@ -531,7 +533,7 @@ export default function App() {
     e.preventDefault();
     const x = e.clientX;
     const y = e.clientY;
-    const at = v.posAtCoords({ left: x, top: y })?.pos ?? null;
+    const at = v.posAtCoords({ x, y });
     // Let the editor see the selection change from the right click first.
     window.setTimeout(() => setMenu(buildMenu(at, x, y)), 0);
   };
@@ -540,15 +542,15 @@ export default function App() {
   // Effects
 
   useEffect(() => {
-    const v = new EditorView(mountRef.current!, {
-      state: createState(parseFile("").doc, () => handlersRef.current),
-      dispatchTransaction(tr) {
-        const next = v.state.apply(tr);
-        v.updateState(next);
-        setInfo(describe(next));
-        if (tr.docChanged) setChangeTick((t) => t + 1);
+    const v = new EditorView({
+      parent: mountRef.current!,
+      state: createEditorState("", emptyLayers, () => handlersRef.current),
+      dispatchTransactions(trs, view) {
+        view.update(trs);
+        setInfo(describe(view.state));
+        // Layers live beside the text, so changing one is a change to the file too.
+        if (trs.some((tr) => tr.docChanged || tr.effects.some((e) => e.is(layersEffect)))) setChangeTick((t) => t + 1);
       },
-      attributes: { spellcheck: "true", class: "page-text" },
     });
     viewRef.current = v;
     if (import.meta.env.DEV) Object.assign(window, { __view: v });
@@ -669,18 +671,18 @@ export default function App() {
             onTab={setTab}
             onActivate={(i) => info.alt && dispatch(setAltActive(view().state, info.alt.id, i))}
             onAdd={(text) => {
-              let id = altInSelection(view().state)?.mark.attrs.id as string | undefined;
+              let id = altInSelection(view().state)?.id;
               if (!id && info.candidate) {
                 const created = createAlt(view().state, info.candidate.from, info.candidate.to);
                 if (!created) return;
-                dispatch(created.tr);
+                dispatch(created.spec);
                 id = created.id;
               }
               if (id) dispatch(addAltVariant(view().state, id, text));
             }}
             onRemove={(i) => info.alt && dispatch(removeAltVariant(view().state, info.alt.id, i))}
-            onParaActivate={(i) => info.para && dispatch(setParagraphActive(view().state, info.para.pos, i))}
-            onParaRemove={(i) => info.para && dispatch(removeParagraphVariant(view().state, info.para.pos, i))}
+            onParaActivate={(i) => info.para && dispatch(setVersionActive(view().state, info.para.at, i))}
+            onParaRemove={(i) => info.para && dispatch(removeVersionVariant(view().state, info.para.at, i))}
             onFork={fork}
             onClose={closeAlternatives}
             onAi={aiAlternatives}
@@ -698,7 +700,7 @@ export default function App() {
               onWalk={walkLab}
               onCut={() => finishLab(makeCuts(view().state))}
               onGhost={() => finishLab(ghostLabSpans(view().state))}
-              onClear={() => finishLab(clearLab(view().state.tr))}
+              onClear={() => finishLab(clearLab())}
             />
           )}
         </main>
@@ -849,7 +851,7 @@ export default function App() {
               walkLab,
               makeCuts: () => finishLab(makeCuts(view().state)),
               ghostLab: () => finishLab(ghostLabSpans(view().state)),
-              clearLab: () => finishLab(clearLab(view().state.tr)),
+              clearLab: () => finishLab(clearLab()),
               setKey: () => void openKeyDialog(),
               connectSubscription: () => void openSubscriptionDialog(),
             },

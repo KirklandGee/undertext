@@ -2,6 +2,7 @@ import { syntaxTree } from "@codemirror/language";
 import { EditorState, Range } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { SyntaxNode } from "@lezer/common";
+import { openUrl } from "../lib/links";
 
 // Live preview: Markdown renders in place, and its syntax shows when you
 // touch it. Inline syntax shows when the selection touches the element, edges
@@ -16,7 +17,7 @@ const MARKS: Record<string, Decoration> = {
   InlineCode: Decoration.mark({ class: "md-code" }),
 };
 const INLINE_MARKS = new Set(["EmphasisMark", "CodeMark", "StrikethroughMark"]);
-const link = Decoration.mark({ class: "md-link" });
+const link = Decoration.mark({ class: "md-link", attributes: { title: "⌘-click to open" } });
 const blank = Decoration.line({ class: "md-blank" });
 const quoteLine = Decoration.line({ class: "md-quote" });
 const codeLine = Decoration.line({ class: "md-codeblock" });
@@ -209,6 +210,18 @@ export function buildPreview(state: EditorState, visible: readonly { from: numbe
   return Decoration.set(out, true);
 }
 
+/** The target of the link at `pos`: a `[text](url)`, an `<autolink>`, or a bare URL. */
+export function linkAt(state: EditorState, pos: number): string | null {
+  for (let n: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 1); n; n = n.parent) {
+    if (n.name === "URL") return state.doc.sliceString(n.from, n.to);
+    if (n.name === "Link" || n.name === "Autolink") {
+      const url = n.getChild("URL");
+      return url ? state.doc.sliceString(url.from, url.to) : null;
+    }
+  }
+  return null;
+}
+
 /** Toggles `[ ]` and `[x]` when you click a task's checkbox. */
 function toggleTask(view: EditorView, target: HTMLElement): boolean {
   if (!target.classList.contains("md-task")) return false;
@@ -238,6 +251,16 @@ export const livePreview = ViewPlugin.fromClass(
         if (toggleTask(view, e.target as HTMLElement)) {
           e.preventDefault();
           return true;
+        }
+        // ⌘-click opens a link.
+        if (e.metaKey && !e.altKey && !e.shiftKey) {
+          const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+          const url = pos === null ? null : linkAt(view.state, pos);
+          if (url) {
+            e.preventDefault();
+            void openUrl(url);
+            return true;
+          }
         }
         return false;
       },

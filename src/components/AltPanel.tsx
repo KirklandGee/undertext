@@ -1,5 +1,5 @@
 import { KeyboardEvent, RefObject, useEffect, useState } from "react";
-import { inlineText } from "../editor/markdown";
+import { inlineText } from "../editor/format";
 import { EditorInfo } from "../editor/setup";
 
 export type AltTab = "inline" | "paragraph";

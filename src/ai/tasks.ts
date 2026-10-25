@@ -1,8 +1,8 @@
-import { Node } from "prosemirror-model";
-import { EditorState, Transaction } from "prosemirror-state";
-import { countWords, findAltById } from "../editor/commands";
+import { EditorState, TransactionSpec } from "@codemirror/state";
+import { blockAt, countWords, findAlt, syncedVariants } from "../editor/commands";
+import { Alt, newId } from "../editor/format";
 import { LabSpan } from "../editor/lab";
-import { newId, schema } from "../editor/schema";
+import { layersOf, mapLayers, setLayers } from "../editor/layers";
 import { callClaude } from "./client";
 
 // Each Lab feature is one Claude call with a JSON answer. Claude quotes the
@@ -20,15 +20,27 @@ interface DocParagraph {
   text: string;
 }
 
-function docParagraphs(doc: Node): DocParagraph[] {
+/** The page's paragraphs: runs of lines between blank lines. */
+function docParagraphs(state: EditorState): DocParagraph[] {
+  const { doc } = state;
   const out: DocParagraph[] = [];
-  let n = 0;
-  doc.forEach((p, offset) => {
-    n++;
-    // Hard breaks become "\n", so every character maps to one document position.
-    const text = p.textBetween(0, p.content.size, undefined, "\n");
-    if (text.trim()) out.push({ n, pos: offset + 1, text });
-  });
+  let start = -1;
+  let lines: string[] = [];
+  const flush = () => {
+    if (start >= 0) out.push({ n: out.length + 1, pos: start, text: lines.join("\n") });
+    start = -1;
+    lines = [];
+  };
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    if (!line.text.trim()) {
+      flush();
+      continue;
+    }
+    if (start < 0) start = line.from;
+    lines.push(line.text);
+  }
+  flush();
   return out;
 }
 
@@ -54,15 +66,10 @@ function locate(paras: DocParagraph[], n: number, quote: string, used: Range[]):
   return null;
 }
 
-const isHeading = (state: EditorState, pos: number) => /^#{1,6}\s/.test(state.doc.resolve(pos).parent.textContent);
+const isHeading = (state: EditorState, pos: number) => /^#{1,6}\s/.test(state.doc.lineAt(pos).text);
 
-const ghostedEntirely = (state: EditorState, r: Range) => {
-  let all = true;
-  state.doc.nodesBetween(r.from, r.to, (node) => {
-    if (node.isText && !schema.marks.ghost.isInSet(node.marks)) all = false;
-  });
-  return all;
-};
+const ghostedEntirely = (state: EditorState, r: Range) =>
+  layersOf(state).ghosts.some((g) => g.from <= r.from && g.to >= r.to);
 
 const object = (properties: Record<string, object>) => ({
   type: "object",
@@ -82,16 +89,14 @@ const VOICE =
 // 1. Alternatives for a word or sentence
 
 export async function suggestAlternatives(state: EditorState, altId: string): Promise<string[]> {
-  const r = findAltById(state.doc, altId);
-  if (!r) return [];
-  const $from = state.doc.resolve(r.from);
-  const start = $from.start();
-  const para = $from.parent.textBetween(0, $from.parent.content.size, undefined, "\n");
-  const a = r.from - start;
-  const b = r.to - start;
+  const r = findAlt(state, altId);
+  const block = r ? blockAt(state, r.from) : null;
+  if (!r || !block) return [];
+  const para = state.doc.sliceString(block.from, block.to);
+  const a = r.from - block.from;
+  const b = r.to - block.from;
   const marked = `${para.slice(0, a)}⟦${para.slice(a, b)}⟧${para.slice(b)}`;
-  const existing: string[] = [...r.mark.attrs.variants];
-  existing[r.mark.attrs.active] = state.doc.textBetween(r.from, r.to);
+  const existing = syncedVariants(state, r);
 
   const answer = await callClaude<{ alternatives: string[] }>(
     {
@@ -120,7 +125,7 @@ interface Fix {
 }
 
 export async function findFixes(state: EditorState): Promise<Fix[]> {
-  const paras = docParagraphs(state.doc);
+  const paras = docParagraphs(state);
   if (!paras.length) return [];
   const answer = await callClaude<{ fixes: Fix[] }>(
     {
@@ -139,8 +144,8 @@ export async function findFixes(state: EditorState): Promise<Fix[]> {
 }
 
 /** One transaction: each fix becomes an alternative with the fix active. */
-export function applyFixes(state: EditorState, fixes: Fix[]): { tr: Transaction; count: number } {
-  const paras = docParagraphs(state.doc);
+export function applyFixes(state: EditorState, fixes: Fix[]): { spec: TransactionSpec; count: number } {
+  const paras = docParagraphs(state);
   const used: Range[] = [];
   const edits: { from: number; to: number; original: string; fixed: string }[] = [];
 
@@ -151,23 +156,22 @@ export function applyFixes(state: EditorState, fixes: Fix[]): { tr: Transaction;
     if (!change) continue;
     const from = found.from + change.start;
     const to = from + change.original.length;
-    if (state.doc.rangeHasMark(from, to, schema.marks.alt)) continue;
+    if (layersOf(state).alts.some((alt) => alt.from < to && alt.to > from)) continue;
     used.push(found);
     edits.push({ from, to, original: change.original, fixed: change.fixed });
   }
 
-  const tr = state.tr;
-  for (const e of edits.sort((x, y) => y.from - x.from)) {
-    const marks = (state.doc.nodeAt(e.from)?.marks ?? []).filter((m) => m.type !== schema.marks.alt);
-    const alt = schema.marks.alt.create({
-      id: newId(),
-      variants: [e.original, e.fixed],
-      active: 1,
-      ai: [e.fixed],
-    });
-    tr.replaceWith(e.from, e.to, schema.text(e.fixed, alt.addToSet(marks)));
-  }
-  return { tr, count: edits.length };
+  const changes = state.changes(edits.map((e) => ({ from: e.from, to: e.to, insert: e.fixed })));
+  const mapped = mapLayers(layersOf(state), changes);
+  const alts: Alt[] = edits.map((e) => {
+    const from = changes.mapPos(e.from, -1);
+    return { from, to: from + e.fixed.length, id: newId(), variants: [e.original, e.fixed], active: 1, ai: [e.fixed] };
+  });
+  const spec: TransactionSpec = {
+    changes,
+    effects: setLayers.of({ ...mapped, alts: [...mapped.alts, ...alts].sort((x, y) => x.from - y.from) }),
+  };
+  return { spec, count: edits.length };
 }
 
 /**
@@ -232,7 +236,7 @@ interface MarkResult {
 
 export async function runCheck(state: EditorState, check: CheckId): Promise<LabSpan[]> {
   if (check === "long") return longSentences(state);
-  const paras = docParagraphs(state.doc);
+  const paras = docParagraphs(state);
   if (!paras.length) return [];
   const answer = await callClaude<{ marks: MarkResult[] }>(
     {
@@ -260,7 +264,7 @@ export async function runCheck(state: EditorState, check: CheckId): Promise<LabS
 /** No AI needed: sentences over `limit` words. */
 export function longSentences(state: EditorState, limit = 30): LabSpan[] {
   const spans: LabSpan[] = [];
-  for (const p of docParagraphs(state.doc)) {
+  for (const p of docParagraphs(state)) {
     if (/^#{1,6}\s/.test(p.text)) continue;
     for (const m of p.text.matchAll(/[^.!?\n]+(?:[.!?]+["'”’)\]]*|$)/g)) {
       const words = m[0].match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
@@ -286,8 +290,8 @@ export const TRIMS = [
 export type TrimId = (typeof TRIMS)[number]["id"];
 
 export async function proposeTrim(state: EditorState, percent: number): Promise<LabSpan[]> {
-  const paras = docParagraphs(state.doc);
-  const total = countWords(state.doc).words;
+  const paras = docParagraphs(state);
+  const total = countWords(state).words;
   if (!paras.length || !total) return [];
   const target = Math.max(1, Math.round((total * percent) / 100));
   const answer = await callClaude<{ cuts: { paragraph: number; text: string }[] }>(
@@ -317,7 +321,7 @@ export async function proposeTrim(state: EditorState, percent: number): Promise<
 
 export function wordsIn(state: EditorState, spans: LabSpan[]): number {
   return spans.reduce(
-    (sum, s) => sum + (state.doc.textBetween(s.from, s.to, " ").match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0),
+    (sum, s) => sum + (state.doc.sliceString(s.from, s.to).match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0),
     0,
   );
 }

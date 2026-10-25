@@ -28,6 +28,8 @@ other ways you might say them.
 
 ![Undertext in dark mode](docs/screenshot.png)
 
+- **Live Markdown.** Headings, bold, links, lists, and quotes render as you type. Their syntax shows
+  when the cursor touches them.
 - **Alternatives.** A word or sentence can have several versions. Hover over it and press ↑ or ↓, or
   press ⌥J and ⌥K, to read each one in place.
 - **Paragraph versions.** Fork a paragraph, rewrite it in place, and switch between the versions.
@@ -74,6 +76,9 @@ storage, and answers AI requests with fake results so you can try the UI.
 | ⌘⇧X | Stash the selection in Overflow |
 | ⌘⇧O | Open Overflow and type in it. Press again to close it. Esc goes back to the page. |
 | ⌘⇧L | Show or hide the layers (same as clicking the word count) |
+| ⌘B ⌘I ⌘E | Bold, italic, inline code. On a selection, a word, or formatted text (removes it) |
+| ⌘⇧K | Link: wraps the selection as `[text]()`. Pasting a URL over a selection also makes a link. |
+| ⌘-click | Open a link |
 | ⌘O, ⌘S, ⌘⇧S, ⌘N | Open, save, save as, new |
 | Right click | Context menu. Shift + right click shows the system menu with spelling fixes. |
 
@@ -109,8 +114,10 @@ Leftovers live after the marker.
 - `{-text-}`: ghosted text. Other Markdown tools show the braces as plain text.
 - `:::alt` … `:::or` … `:::`: paragraph versions. `*` marks the active one.
 - `<!-- overflow -->`: everything after this line is the Overflow panel.
-- Use `\` to escape `{ } | > ~`. All other Markdown stays as literal text, so `~~text~~` is ordinary
-  strikethrough.
+- Everything else is plain Markdown and stays exactly as you wrote it, so `~~text~~` is ordinary
+  strikethrough. The additions are not read inside code.
+- A save adds a backslash only where your text would read as an addition: before `{{` and `{-`, and
+  before a line that reads `:::alt` or `<!-- overflow -->`. Inside `{{ }}`, `\` escapes `| } > ~ \`.
 
 Older files wrote ghosts as `~~text~~`. Those now open as strikethrough.
 
@@ -147,8 +154,7 @@ limits. If `claude` isn't in `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local
 ## Known limitations
 
 - A ghost that covers only part of an alternative is lost when you save.
-- Empty paragraphs collapse when you save.
-- When you save, `{` in your text gets a backslash (`\{`), so it is not read as syntax.
+- Tables, images, and HTML show as Markdown source, not rendered.
 - Autosave overwrites the file even if another editor changed it.
 - Typing at the end of an alternative adds plain text after it, not to it.
 
@@ -160,7 +166,8 @@ pnpm icons          # rebuild the app icons from brand/ (needs ImageMagick)
 cd src-tauri && cargo test
 ```
 
-The editor is [ProseMirror](https://prosemirror.net) inside a [Tauri](https://tauri.app) app.
+The editor is [CodeMirror](https://codemirror.net) inside a [Tauri](https://tauri.app) app. The page
+text is plain Markdown; alternatives, ghosts, and versions are ranges kept beside it (`src/editor/layers.ts`).
 The icon borrows the mark of [Klipstack](brand/README.md), with a handwritten u in place of its clip.
 
 ## License

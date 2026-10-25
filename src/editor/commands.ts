@@ -1,178 +1,136 @@
-import { Mark, MarkType, Node } from "prosemirror-model";
-import { Command, EditorState, TextSelection, Transaction } from "prosemirror-state";
-import { parseInline, serializeInline } from "./markdown";
-import { newId, schema } from "./schema";
+import { isolateHistory } from "@codemirror/commands";
+import { ChangeSpec, EditorSelection, EditorState, StateCommand, TransactionSpec } from "@codemirror/state";
+import { Alt, Layers, newId, parseInline, serializeBlock, Span, Version } from "./format";
+import { blockLines, layersOf, mapLayers, setLayers } from "./layers";
 
-const { alt, ghost } = schema.marks;
+// Commands return a transaction spec, or null when they don't apply.
+// Positions are plain offsets into the page text.
 
-export interface AltRange {
-  from: number;
-  to: number;
-  mark: Mark;
-}
+/** Swapping a variant in is its own undo step, never merged with typing. */
+const ownStep = isolateHistory.of("full");
+
+const byFrom = <T extends Span>(a: T, b: T) => a.from - b.from;
 
 // ---------------------------------------------------------------------------
 // Finding things
 
-export function findAltById(doc: Node, id: string): AltRange | null {
-  let range: AltRange | null = null;
-  doc.descendants((node, pos) => {
-    if (!node.isText) return;
-    const mark = alt.isInSet(node.marks);
-    if (!mark || mark.attrs.id !== id) return;
-    if (!range) range = { from: pos, to: pos + node.nodeSize, mark };
-    else range.to = pos + node.nodeSize;
-  });
-  return range;
+export function findAlt(state: EditorState, id: string): Alt | null {
+  return layersOf(state).alts.find((a) => a.id === id) ?? null;
 }
 
-export function altAtPos(doc: Node, pos: number): AltRange | null {
-  const $pos = doc.resolve(pos);
-  const mark = alt.isInSet($pos.nodeAfter?.marks ?? []) ?? alt.isInSet($pos.nodeBefore?.marks ?? []);
-  return mark ? findAltById(doc, mark.attrs.id) : null;
+/** The alternative at `pos`, edges included. */
+export function altAt(state: EditorState, pos: number): Alt | null {
+  return layersOf(state).alts.find((a) => a.from <= pos && pos <= a.to) ?? null;
 }
 
-export function altInSelection(state: EditorState): AltRange | null {
-  const { from, to, empty } = state.selection;
-  if (empty) return altAtPos(state.doc, from);
-  let found: string | null = null;
-  state.doc.nodesBetween(from, to, (node) => {
-    const mark = alt.isInSet(node.marks);
-    if (mark && !found) found = mark.attrs.id;
-  });
-  return found ? findAltById(state.doc, found) : null;
+export function altInSelection(state: EditorState): Alt | null {
+  const { from, to, empty } = state.selection.main;
+  if (empty) return altAt(state, from);
+  return layersOf(state).alts.find((a) => a.from < to && a.to > from) ?? null;
 }
 
-export function markRangeAt(doc: Node, pos: number, type: MarkType): { from: number; to: number } | null {
-  const $pos = doc.resolve(pos);
-  const parent = $pos.parent;
-  if (!parent.isTextblock) return null;
-  const start = $pos.start();
-  const children: { node: Node; from: number }[] = [];
-  parent.forEach((node, offset) => children.push({ node, from: start + offset }));
-  let idx = children.findIndex((c) => c.from <= pos && pos < c.from + c.node.nodeSize && type.isInSet(c.node.marks));
-  if (idx < 0) idx = children.findIndex((c) => c.from + c.node.nodeSize === pos && type.isInSet(c.node.marks));
-  if (idx < 0) return null;
-  let a = idx;
-  let b = idx;
-  while (a > 0 && type.isInSet(children[a - 1].node.marks)) a--;
-  while (b < children.length - 1 && type.isInSet(children[b + 1].node.marks)) b++;
-  return { from: children[a].from, to: children[b].from + children[b].node.nodeSize };
+/** The variants with the active one read from the page. */
+export function syncedVariants(state: EditorState, alt: Alt): string[] {
+  const variants = [...alt.variants];
+  variants[alt.active] = state.doc.sliceString(alt.from, alt.to);
+  return variants;
 }
 
-export function wordRangeAt(doc: Node, pos: number): { from: number; to: number } | null {
-  const $pos = doc.resolve(pos);
-  const parent = $pos.parent;
-  if (!parent.isTextblock) return null;
-  const start = $pos.start();
-  const text = parent.textBetween(0, parent.content.size, undefined, "\n");
+export function wordRangeAt(state: EditorState, pos: number): Span | null {
+  const line = state.doc.lineAt(pos);
   const isWord = (c: string | undefined) => Boolean(c && /[\p{L}\p{N}'’-]/u.test(c));
-  let a = pos - start;
+  let a = pos - line.from;
   let b = a;
-  while (a > 0 && isWord(text[a - 1])) a--;
-  while (b < text.length && isWord(text[b])) b++;
-  return a === b ? null : { from: start + a, to: start + b };
+  while (a > 0 && isWord(line.text[a - 1])) a--;
+  while (b < line.text.length && isWord(line.text[b])) b++;
+  return a === b ? null : { from: line.from + a, to: line.from + b };
 }
 
-export function paragraphAt(state: EditorState, pos = state.selection.from): { pos: number; node: Node } | null {
-  const $pos = state.doc.resolve(pos);
-  if ($pos.depth < 1) return null;
-  const p = $pos.before(1);
-  return { pos: p, node: state.doc.nodeAt(p)! };
+/** The paragraph at `pos`: from its first line to the end of its last. Null on a blank line. */
+export function blockAt(state: EditorState, pos = state.selection.main.head): Span | null {
+  const { doc } = state;
+  let line = doc.lineAt(pos);
+  if (!line.text.trim()) return null;
+  while (line.number > 1 && doc.line(line.number - 1).text.trim()) line = doc.line(line.number - 1);
+  const { to } = blockLines(doc, line.from);
+  return { from: line.from, to };
 }
 
-export function findParagraphByVid(doc: Node, vid: string): number | null {
-  let found: number | null = null;
-  doc.forEach((node, offset) => {
-    if (found === null && node.attrs.vid === vid) found = offset;
-  });
-  return found;
+export function versionAt(state: EditorState, pos = state.selection.main.head): Version | null {
+  const block = blockAt(state, pos);
+  return block ? (layersOf(state).versions.find((v) => v.at === block.from) ?? null) : null;
 }
 
 // ---------------------------------------------------------------------------
 // Word and sentence alternatives
 
-/** Wraps a range in a new alt mark. The current text becomes the original. */
-export function createAlt(state: EditorState, from: number, to: number): { tr: Transaction; id: string } | null {
-  const $from = state.doc.resolve(from);
-  if (!$from.sameParent(state.doc.resolve(to))) return null;
-  const raw = state.doc.textBetween(from, to, undefined, "\n");
+function withAlt(l: Layers, alt: Alt | null, id: string): Layers {
+  const alts = l.alts.filter((a) => a.id !== id);
+  if (alt) alts.push(alt);
+  return { ...l, alts: alts.sort(byFrom) };
+}
+
+/** Wraps a range in a new alternative. The current text becomes the original. */
+export function createAlt(state: EditorState, from: number, to: number): { spec: TransactionSpec; id: string } | null {
+  const raw = state.doc.sliceString(from, to);
   if (raw.includes("\n")) return null;
   from += raw.length - raw.trimStart().length;
   to -= raw.length - raw.trimEnd().length;
   if (from >= to) return null;
-
-  let existing: string | null = null;
-  state.doc.nodesBetween(from, to, (node) => {
-    existing ??= alt.isInSet(node.marks)?.attrs.id ?? null;
-  });
-  if (existing) return { tr: state.tr, id: existing };
-
+  const existing = layersOf(state).alts.find((a) => a.from < to && a.to > from);
+  if (existing) return { spec: {}, id: existing.id };
   const id = newId();
-  const text = state.doc.textBetween(from, to);
-  const tr = state.tr.addMark(from, to, alt.create({ id, variants: [text], active: 0, ai: [] }));
-  return { tr, id };
+  const alt: Alt = { from, to, id, variants: [state.doc.sliceString(from, to)], active: 0, ai: [] };
+  return { spec: { effects: setLayers.of(withAlt(layersOf(state), alt, id)) }, id };
 }
 
-function syncedVariants(state: EditorState, r: AltRange): string[] {
-  const variants: string[] = [...r.mark.attrs.variants];
-  variants[r.mark.attrs.active] = state.doc.textBetween(r.from, r.to);
-  return variants;
-}
-
-function replaceAlt(
-  state: EditorState,
-  r: AltRange,
-  variants: string[],
-  active: number,
-  ai: string[] = r.mark.attrs.ai ?? [],
-): Transaction {
-  const tr = state.tr;
-  const first = state.doc.nodeAt(r.from);
-  const otherMarks = (first?.marks ?? []).filter((m) => m.type !== alt);
-  const mark = alt.create({ id: r.mark.attrs.id, variants, active, ai: ai.filter((t) => variants.includes(t)) });
+function replaceAlt(state: EditorState, alt: Alt, variants: string[], active: number, ai = alt.ai): TransactionSpec {
   const text = variants[active];
-  const { from: selFrom, to: selTo } = state.selection;
-  const selectionInside = selFrom >= r.from && selTo <= r.to;
-
-  tr.replaceWith(r.from, r.to, schema.text(text, mark.addToSet(otherMarks)));
-  const shift = fixArticle(tr, r.from, text);
-  if (selectionInside) tr.setSelection(TextSelection.create(tr.doc, r.from + shift + text.length));
-  return tr;
+  const article = articleFix(state, alt.from, text);
+  const changes = state.changes([...(article ? [article] : []), { from: alt.from, to: alt.to, insert: text }]);
+  const from = changes.mapPos(alt.from, 1);
+  const next: Alt = { ...alt, from, to: from + text.length, variants, active, ai: ai.filter((t) => variants.includes(t)) };
+  const sel = state.selection.main;
+  const inside = sel.from >= alt.from && sel.to <= alt.to;
+  return {
+    changes,
+    effects: setLayers.of(withAlt(mapLayers(layersOf(state), changes), next, alt.id)),
+    selection: inside ? EditorSelection.cursor(next.to) : undefined,
+    annotations: ownStep,
+  };
 }
 
-export function setAltActive(state: EditorState, id: string, index: number): Transaction | null {
-  const r = findAltById(state.doc, id);
-  if (!r) return null;
-  const variants = syncedVariants(state, r);
+export function setAltActive(state: EditorState, id: string, index: number): TransactionSpec | null {
+  const alt = findAlt(state, id);
+  if (!alt) return null;
+  const variants = syncedVariants(state, alt);
   if (index < 0 || index >= variants.length) return null;
-  return replaceAlt(state, r, variants, index);
+  return replaceAlt(state, alt, variants, index);
 }
 
-export function cycleAlt(state: EditorState, id: string, dir: 1 | -1): Transaction | null {
-  const r = findAltById(state.doc, id);
-  if (!r) return null;
-  const n = r.mark.attrs.variants.length;
-  if (n < 2) return null;
-  return setAltActive(state, id, (r.mark.attrs.active + dir + n) % n);
+export function cycleAlt(state: EditorState, id: string, dir: 1 | -1): TransactionSpec | null {
+  const alt = findAlt(state, id);
+  const n = alt?.variants.length ?? 0;
+  if (!alt || n < 2) return null;
+  return setAltActive(state, id, (alt.active + dir + n) % n);
 }
 
-export function addAltVariant(state: EditorState, id: string, text: string): Transaction | null {
-  const r = findAltById(state.doc, id);
+export function addAltVariant(state: EditorState, id: string, text: string): TransactionSpec | null {
+  const alt = findAlt(state, id);
   const value = text.trim();
-  if (!r || !value || value.includes("\n")) return null;
-  const variants = syncedVariants(state, r);
+  if (!alt || !value || value.includes("\n")) return null;
+  const variants = syncedVariants(state, alt);
   const existing = variants.indexOf(value);
-  if (existing >= 0) return replaceAlt(state, r, variants, existing);
+  if (existing >= 0) return replaceAlt(state, alt, variants, existing);
   variants.push(value);
-  return replaceAlt(state, r, variants, variants.length - 1);
+  return replaceAlt(state, alt, variants, variants.length - 1);
 }
 
 /** Adds AI suggestions without switching away from the current text. */
-export function addAiAlternatives(state: EditorState, id: string, texts: string[]): Transaction | null {
-  const r = findAltById(state.doc, id);
-  if (!r) return null;
-  const variants = syncedVariants(state, r);
+export function addAiAlternatives(state: EditorState, id: string, texts: string[]): TransactionSpec | null {
+  const alt = findAlt(state, id);
+  if (!alt) return null;
+  const variants = syncedVariants(state, alt);
   const seen = new Set(variants.map((v) => v.toLowerCase()));
   const added: string[] = [];
   for (const raw of texts) {
@@ -183,69 +141,60 @@ export function addAiAlternatives(state: EditorState, id: string, texts: string[
     added.push(text);
   }
   if (!added.length) return null;
-  return replaceAlt(state, r, variants, r.mark.attrs.active, [...(r.mark.attrs.ai ?? []), ...added]);
+  return replaceAlt(state, alt, variants, alt.active, [...alt.ai, ...added]);
 }
 
-export function removeAltVariant(state: EditorState, id: string, index: number): Transaction | null {
-  const r = findAltById(state.doc, id);
-  if (!r) return null;
-  const variants = syncedVariants(state, r);
-  if (variants.length < 2) return state.tr.removeMark(r.from, r.to, alt);
-  const active: number = r.mark.attrs.active;
+export function removeAltVariant(state: EditorState, id: string, index: number): TransactionSpec | null {
+  const alt = findAlt(state, id);
+  if (!alt) return null;
+  const variants = syncedVariants(state, alt);
+  if (variants.length < 2) return dropAlt(state, id);
   variants.splice(index, 1);
-  const next = index === active ? Math.max(0, index - 1) : index < active ? active - 1 : active;
-  return replaceAlt(state, r, variants, next);
+  const next = index === alt.active ? Math.max(0, index - 1) : index < alt.active ? alt.active - 1 : alt.active;
+  return replaceAlt(state, alt, variants, next);
 }
 
-/** Removes alt marks that have only one variant left. */
-export function cleanupSingleAlts(state: EditorState): Transaction | null {
-  const tr = state.tr;
-  state.doc.descendants((node, pos) => {
-    const mark = node.isText ? alt.isInSet(node.marks) : null;
-    if (mark && mark.attrs.variants.length < 2) tr.removeMark(pos, pos + node.nodeSize, alt);
-  });
-  return tr.docChanged ? tr : null;
+/** Keeps the current text of an alternative and drops the others. */
+export function dropAlt(state: EditorState, id: string): TransactionSpec | null {
+  return findAlt(state, id) ? { effects: setLayers.of(withAlt(layersOf(state), null, id)) } : null;
+}
+
+/** Removes alternatives that have only one variant left. */
+export function cleanupSingleAlts(state: EditorState): TransactionSpec | null {
+  const l = layersOf(state);
+  const alts = l.alts.filter((a) => a.variants.length > 1);
+  return alts.length === l.alts.length ? null : { effects: setLayers.of({ ...l, alts }) };
 }
 
 // ---------------------------------------------------------------------------
 // Keyboard: cycle at the caret, jump between items with versions
 
 /** Cycles the word or sentence at the caret, or else its paragraph. */
-export function cycleAtCaret(state: EditorState, dir: 1 | -1): Transaction | null {
-  const r = altInSelection(state);
-  if (r && r.mark.attrs.variants.length > 1) return cycleAlt(state, r.mark.attrs.id, dir);
-  return cycleParagraphAtCaret(state, dir);
+export function cycleAtCaret(state: EditorState, dir: 1 | -1): TransactionSpec | null {
+  const alt = altInSelection(state);
+  if (alt && alt.variants.length > 1) return cycleAlt(state, alt.id, dir);
+  return cycleVersionAtCaret(state, dir);
 }
 
-export function cycleParagraphAtCaret(state: EditorState, dir: 1 | -1): Transaction | null {
-  const p = paragraphAt(state);
-  return p ? cycleParagraph(state, p.pos, dir) : null;
+export function cycleVersionAtCaret(state: EditorState, dir: 1 | -1): TransactionSpec | null {
+  const v = versionAt(state);
+  return v ? cycleVersion(state, v.at, dir) : null;
 }
 
-export interface VersionedItem {
-  from: number;
-  to: number;
+export interface VersionedItem extends Span {
   kind: "alt" | "para";
 }
 
-/** Everything that has more than one version, in document order. A paragraph comes before its words. */
-export function versionedItems(doc: Node): VersionedItem[] {
-  const items: VersionedItem[] = [];
-  doc.forEach((p, offset) => {
-    if ((p.attrs.variants?.length ?? 0) > 1) items.push({ from: offset + 1, to: offset + p.nodeSize - 1, kind: "para" });
-    const alts = new Map<string, VersionedItem>();
-    p.forEach((child, childOffset) => {
-      const mark = alt.isInSet(child.marks);
-      if (!mark || mark.attrs.variants.length < 2) return;
-      const from = offset + 1 + childOffset;
-      const to = from + child.nodeSize;
-      const item = alts.get(mark.attrs.id);
-      if (item) item.to = to;
-      else alts.set(mark.attrs.id, { from, to, kind: "alt" });
-    });
-    items.push(...alts.values());
-  });
-  return items;
+/** Everything that has more than one version, in page order. A paragraph comes before its words. */
+export function versionedItems(state: EditorState): VersionedItem[] {
+  const l = layersOf(state);
+  const items: VersionedItem[] = [
+    ...l.versions.map((v) => ({ ...blockLines(state.doc, v.at), kind: "para" as const })),
+    ...l.alts.filter((a) => a.variants.length > 1).map((a) => ({ from: a.from, to: a.to, kind: "alt" as const })),
+  ];
+  return items
+    .map(({ from, to, kind }) => ({ from, to, kind }))
+    .sort((a, b) => a.from - b.from || (a.kind === "para" ? -1 : 1));
 }
 
 /**
@@ -256,42 +205,38 @@ export function jumpToItem(
   state: EditorState,
   dir: 1 | -1,
   lastIndex: number | null,
-): { tr: Transaction; index: number } | null {
-  const items = versionedItems(state.doc);
+): { spec: TransactionSpec; index: number } | null {
+  const items = versionedItems(state);
   if (!items.length) return null;
-  const head = state.selection.head;
+  const head = state.selection.main.head;
   let index: number;
   if (lastIndex !== null && items[lastIndex]?.from === head) index = lastIndex + dir;
   else if (dir > 0) index = items.findIndex((i) => i.from > head);
   else index = items.findLastIndex((i) => i.from < head);
   const n = items.length;
   index = index < 0 ? (dir > 0 ? 0 : n - 1) : (index + n) % n;
-  const tr = state.tr.setSelection(TextSelection.create(state.doc, items[index].from)).scrollIntoView();
-  return { tr, index };
+  return { spec: { selection: EditorSelection.cursor(items[index].from), scrollIntoView: true }, index };
 }
 
 // ---------------------------------------------------------------------------
 // a / an
 
-/** Fixes "a"/"an" before `from`. Returns how far `from` moved. */
-function fixArticle(tr: Transaction, from: number, word: string): number {
-  const $pos = tr.doc.resolve(from);
-  const start = $pos.start();
-  const winStart = Math.max(start, from - 12);
-  const before = tr.doc.textBetween(winStart, from, undefined, "\n");
-  const re = winStart === start ? /(?:^|[^\p{L}\p{N}])(an|a)(\s+)$/iu : /[^\p{L}\p{N}](an|a)(\s+)$/iu;
+/** The change that fixes "a"/"an" right before `from` for `word`, if one is needed. */
+function articleFix(state: EditorState, from: number, word: string): { from: number; to: number; insert: string } | null {
+  const line = state.doc.lineAt(from);
+  const winStart = Math.max(line.from, from - 12);
+  const before = state.doc.sliceString(winStart, from);
+  const re = winStart === line.from ? /(?:^|[^\p{L}\p{N}])(an|a)(\s+)$/iu : /[^\p{L}\p{N}](an|a)(\s+)$/iu;
   const m = re.exec(before);
-  if (!m) return 0;
+  if (!m) return null;
   const article = m[1];
   const wantAn = startsWithVowelSound(word);
-  if (wantAn === (article.toLowerCase() === "an")) return 0;
+  if (wantAn === (article.toLowerCase() === "an")) return null;
   let replacement = wantAn ? "an" : "a";
   if (article === article.toUpperCase() && article.length > 1) replacement = replacement.toUpperCase();
   else if (article[0] === article[0].toUpperCase()) replacement = replacement[0].toUpperCase() + replacement.slice(1);
   const artFrom = from - m[2].length - article.length;
-  const marks = tr.doc.nodeAt(artFrom)?.marks ?? [];
-  tr.replaceWith(artFrom, artFrom + article.length, schema.text(replacement, marks));
-  return replacement.length - article.length;
+  return { from: artFrom, to: artFrom + article.length, insert: replacement };
 }
 
 export function startsWithVowelSound(word: string): boolean {
@@ -306,244 +251,195 @@ export function startsWithVowelSound(word: string): boolean {
 // ---------------------------------------------------------------------------
 // Paragraph versions
 
-function syncedParagraphVariants(node: Node): string[] {
-  const current = serializeInline(node.content);
-  const variants: string[] | null = node.attrs.variants;
-  if (!variants) return [current];
-  const next = [...variants];
-  next[node.attrs.active] = current;
-  return next;
+export function findVersion(state: EditorState, at: number): Version | null {
+  return layersOf(state).versions.find((v) => v.at === at) ?? null;
 }
 
-function replaceParagraph(state: EditorState, pos: number, node: Node, variants: string[], active: number): Transaction {
-  const tr = state.tr;
-  const content = parseInline(variants[active]);
-  const { from } = state.selection;
-  const selectionInside = from > pos && from < pos + node.nodeSize;
-  tr.replaceWith(pos + 1, pos + 1 + node.content.size, content);
+/** The inline Markdown of `from..to`, with the layers inside it. */
+export function rangeMarkdown(state: EditorState, from: number, to: number): string {
+  const l = layersOf(state);
+  const alts = l.alts.filter((a) => a.from >= from && a.to <= to).map((a) => ({ ...a, from: a.from - from, to: a.to - from }));
+  const ghosts = l.ghosts
+    .filter((g) => g.from < to && g.to > from)
+    .map((g) => ({ from: Math.max(g.from, from) - from, to: Math.min(g.to, to) - from }));
+  const text = state.doc.sliceString(from, to);
+  return serializeBlock({ text, alts, ghosts }, 0, text.length);
+}
+
+function currentBlockMarkdown(state: EditorState, at: number): string {
+  return rangeMarkdown(state, at, blockLines(state.doc, at).to);
+}
+
+function syncedVersionVariants(state: EditorState, at: number): { variants: string[]; active: number } {
+  const v = findVersion(state, at);
+  const current = currentBlockMarkdown(state, at);
+  if (!v) return { variants: [current], active: 0 };
+  const variants = [...v.variants];
+  variants[v.active] = current;
+  return { variants, active: v.active };
+}
+
+/** Puts version `active` of the paragraph at `at` on the page. */
+function replaceBlock(state: EditorState, at: number, variants: string[], active: number): TransactionSpec {
+  const { to } = blockLines(state.doc, at);
+  const inline = parseInline(variants[active]);
+  const changes = state.changes({ from: at, to, insert: inline.text });
+  const mapped = mapLayers(layersOf(state), changes);
+  const end = at + inline.text.length;
+  const outside = <T extends Span>(r: T) => r.to <= at || r.from >= end;
+  const shift = <T extends Span>(r: T): T => ({ ...r, from: r.from + at, to: r.to + at });
   const keep = variants.length > 1;
-  tr.setNodeMarkup(pos, undefined, {
-    vid: keep ? (node.attrs.vid ?? newId()) : null,
-    variants: keep ? variants : null,
-    active: keep ? active : 0,
-  });
-  if (selectionInside) tr.setSelection(TextSelection.create(tr.doc, pos + 1 + content.size));
-  return tr;
+  const old = findVersion(state, at);
+  const versions = mapped.versions.filter((v) => v.at !== at);
+  if (keep) versions.push({ at, vid: old?.vid ?? newId(), variants, active });
+  const sel = state.selection.main;
+  return {
+    changes,
+    effects: setLayers.of({
+      alts: [...mapped.alts.filter(outside), ...inline.alts.map(shift)].sort(byFrom),
+      ghosts: [...mapped.ghosts.filter(outside), ...inline.ghosts.map(shift)].sort(byFrom),
+      versions: versions.sort((a, b) => a.at - b.at),
+    }),
+    selection: sel.from >= at && sel.from <= to ? EditorSelection.cursor(end) : undefined,
+    annotations: ownStep,
+  };
 }
 
-export function setParagraphActive(state: EditorState, pos: number, index: number): Transaction | null {
-  const node = state.doc.nodeAt(pos);
-  if (!node) return null;
-  const variants = syncedParagraphVariants(node);
+export function setVersionActive(state: EditorState, at: number, index: number): TransactionSpec | null {
+  const { variants } = syncedVersionVariants(state, at);
   if (index < 0 || index >= variants.length) return null;
-  return replaceParagraph(state, pos, node, variants, index);
+  return replaceBlock(state, at, variants, index);
 }
 
-export function cycleParagraph(state: EditorState, pos: number, dir: 1 | -1): Transaction | null {
-  const node = state.doc.nodeAt(pos);
-  const n = node?.attrs.variants?.length ?? 0;
-  if (!node || n < 2) return null;
-  return setParagraphActive(state, pos, (node.attrs.active + dir + n) % n);
+export function cycleVersion(state: EditorState, at: number, dir: 1 | -1): TransactionSpec | null {
+  const v = findVersion(state, at);
+  const n = v?.variants.length ?? 0;
+  if (!v || n < 2) return null;
+  return setVersionActive(state, at, (v.active + dir + n) % n);
 }
 
 /** Copies the current paragraph into a new version and makes it active. */
-export function forkParagraph(state: EditorState, pos: number): Transaction | null {
-  const node = state.doc.nodeAt(pos);
-  if (!node) return null;
-  const variants = syncedParagraphVariants(node);
-  const active: number = node.attrs.variants ? node.attrs.active : 0;
+export function forkVersion(state: EditorState, at: number): TransactionSpec | null {
+  const { variants, active } = syncedVersionVariants(state, at);
   variants.push(variants[active]);
-  return state.tr.setNodeMarkup(pos, undefined, {
-    vid: node.attrs.vid ?? newId(),
-    variants,
-    active: variants.length - 1,
-  });
+  const old = findVersion(state, at);
+  const l = layersOf(state);
+  const version: Version = { at, vid: old?.vid ?? newId(), variants, active: variants.length - 1 };
+  return { effects: setLayers.of({ ...l, versions: [...l.versions.filter((v) => v.at !== at), version].sort((a, b) => a.at - b.at) }) };
 }
 
-export function removeParagraphVariant(state: EditorState, pos: number, index: number): Transaction | null {
-  const node = state.doc.nodeAt(pos);
-  if (!node?.attrs.variants) return null;
-  const variants = syncedParagraphVariants(node);
-  const active: number = node.attrs.active;
+export function removeVersionVariant(state: EditorState, at: number, index: number): TransactionSpec | null {
+  if (!findVersion(state, at)) return null;
+  const { variants, active } = syncedVersionVariants(state, at);
   variants.splice(index, 1);
   const next = index === active ? Math.max(0, index - 1) : index < active ? active - 1 : active;
-  return replaceParagraph(state, pos, node, variants, next);
-}
-
-// ---------------------------------------------------------------------------
-// Ghost and overflow
-
-export const toggleGhost: Command = (state, dispatch) => {
-  const { from, to, empty } = state.selection;
-  if (empty) {
-    const r = markRangeAt(state.doc, from, ghost);
-    if (!r) return false;
-    dispatch?.(state.tr.removeMark(r.from, r.to, ghost));
-    return true;
-  }
-  const tr = state.doc.rangeHasMark(from, to, ghost)
-    ? state.tr.removeMark(from, to, ghost)
-    : state.tr.addMark(from, to, ghost.create());
-  dispatch?.(tr);
-  return true;
-};
-
-export function reviveAt(state: EditorState, pos: number): Transaction | null {
-  const r = markRangeAt(state.doc, pos, ghost);
-  return r ? state.tr.removeMark(r.from, r.to, ghost) : null;
-}
-
-export function takeSelectionText(state: EditorState): { tr: Transaction; text: string } | null {
-  const { from, to, empty } = state.selection;
-  if (empty) return null;
-  const text = state.doc.textBetween(from, to, "\n\n", "\n");
-  return { tr: state.tr.deleteSelection(), text };
-}
-
-// ---------------------------------------------------------------------------
-// Settling: keep the current choice and drop the rest
-
-/** Keeps the current text of an alternative and drops the others. */
-export function dropAlt(state: EditorState, id: string): Transaction | null {
-  const r = findAltById(state.doc, id);
-  return r ? state.tr.removeMark(r.from, r.to, alt) : null;
+  return replaceBlock(state, at, variants, next);
 }
 
 /** Keeps the current version of a paragraph and drops the others. */
-export function settleParagraph(state: EditorState, pos: number): Transaction | null {
-  const node = state.doc.nodeAt(pos);
-  if (!node?.attrs.variants) return null;
-  return state.tr.setNodeMarkup(pos, undefined, { vid: null, variants: null, active: 0 });
+export function settleVersion(state: EditorState, at: number): TransactionSpec | null {
+  const l = layersOf(state);
+  if (!findVersion(state, at)) return null;
+  return { effects: setLayers.of({ ...l, versions: l.versions.filter((v) => v.at !== at) }) };
 }
 
-/** Keeps every current choice in the document. Ghosts stay as they are. */
-export function settleAll(state: EditorState): Transaction | null {
-  const tr = state.tr.removeMark(0, state.doc.content.size, alt);
-  state.doc.forEach((p, offset) => {
-    if (p.attrs.variants) tr.setNodeMarkup(offset, undefined, { vid: null, variants: null, active: 0 });
-  });
-  return tr.docChanged ? tr : null;
-}
-
-export function hasGhosts(doc: Node): boolean {
-  return doc.rangeHasMark(0, doc.content.size, ghost);
-}
-
-export function reviveAll(state: EditorState): Transaction | null {
-  return hasGhosts(state.doc) ? state.tr.removeMark(0, state.doc.content.size, ghost) : null;
-}
-
-/** Deletes all ghosted text: "make the cuts". */
-export function deleteGhosts(state: EditorState): Transaction | null {
-  const ranges: { from: number; to: number }[] = [];
-  state.doc.descendants((node, pos) => {
-    if (!node.isInline || !ghost.isInSet(node.marks)) return;
-    const last = ranges[ranges.length - 1];
-    if (last && last.to === pos) last.to = pos + node.nodeSize;
-    else ranges.push({ from: pos, to: pos + node.nodeSize });
-  });
-  if (!ranges.length) return null;
-  const tr = state.tr;
-  for (const r of ranges.reverse()) {
-    // Don't leave a double space where the ghost was.
-    const $from = state.doc.resolve(r.from);
-    const before = r.from > $from.start() ? state.doc.textBetween(r.from - 1, r.from) : " ";
-    const after = r.to < $from.end() ? state.doc.textBetween(r.to, r.to + 1) : "";
-    tr.delete(r.from, before === " " && after === " " ? r.to + 1 : r.to);
-  }
-  return tr;
+/** Keeps every current choice in the page. Ghosts stay as they are. */
+export function settleAll(state: EditorState): TransactionSpec | null {
+  const l = layersOf(state);
+  if (!l.alts.length && !l.versions.length) return null;
+  return { effects: setLayers.of({ ...l, alts: [], versions: [] }) };
 }
 
 // ---------------------------------------------------------------------------
-// Lists
+// Ghosts
 
-// A list is plain text: one item per line, lines split by hard breaks, all in
-// one paragraph. That is how a Markdown list loads from disk.
-const LIST_MARKER = /^(\s*)(?:([-*+])|(\d+)([.)]))(\s+)/;
-
-const lineEndAt = (text: string, i: number) => {
-  const n = text.indexOf("\n", i);
-  return n < 0 ? text.length : n;
-};
-
-/** Enter in a list item starts the next item. Enter in an empty item ends the list. */
-export const continueList: Command = (state, dispatch) => {
-  const { $from, $to } = state.selection;
-  if (!$from.sameParent($to) || $from.parent.type !== schema.nodes.paragraph) return false;
-  const para = $from.parent;
-  // A hard break is one position wide, so string offsets match paragraph offsets.
-  const text = para.textBetween(0, para.content.size, undefined, "\n");
-  const offset = $from.parentOffset;
-  const lineStart = offset === 0 ? 0 : text.lastIndexOf("\n", offset - 1) + 1;
-  const lineEnd = lineEndAt(text, offset);
-  const line = text.slice(lineStart, lineEnd);
-  const m = LIST_MARKER.exec(line);
-  if (!m || offset < lineStart + m[0].length) return false;
-  if (!dispatch) return true;
-
-  const start = $from.start();
-  const tr = state.tr;
-
-  if (line.slice(m[0].length).trim() === "") {
-    // Drop the empty item. Lines before and after stay as their own paragraphs.
-    const hasBefore = lineStart > 0;
-    const hasAfter = lineEnd < text.length;
-    let pos = start + (hasBefore ? lineStart - 1 : lineStart);
-    tr.delete(pos, start + (hasAfter ? lineEnd + 1 : lineEnd));
-    if (hasBefore) {
-      tr.split(pos);
-      pos += 2;
+function subtract(spans: Span[], from: number, to: number): Span[] {
+  const out: Span[] = [];
+  for (const s of spans) {
+    if (s.to <= from || s.from >= to) out.push(s);
+    else {
+      if (s.from < from) out.push({ from: s.from, to: from });
+      if (s.to > to) out.push({ from: to, to: s.to });
     }
-    if (hasAfter) tr.split(pos);
-    dispatch(tr.setSelection(TextSelection.create(tr.doc, pos)).scrollIntoView());
-    return true;
   }
+  return out;
+}
 
-  const [, indent, bullet, num, delim, space] = m;
-
-  // Renumber the items below at the same level. Nested lines are skipped.
-  // Done first: these edits sit after the caret, so its positions stay valid.
-  if (num) {
-    let n = Number(num) + 1;
-    const edits: { from: number; to: number; text: string }[] = [];
-    for (let s = lineEndAt(text, $to.parentOffset) + 1; s <= text.length; ) {
-      const e = lineEndAt(text, s);
-      const next = text.slice(s, e);
-      const lead = /^\s*/.exec(next)![0].length;
-      const item = LIST_MARKER.exec(next);
-      if (lead <= indent.length) {
-        if (!item?.[3] || lead < indent.length || item[4] !== delim) break;
-        edits.push({ from: s + lead, to: s + lead + item[3].length, text: String(++n) });
-      }
-      s = e + 1;
-    }
-    for (const ed of edits.reverse()) tr.insertText(ed.text, start + ed.from, start + ed.to);
+export function union(spans: Span[]): Span[] {
+  const out: Span[] = [];
+  for (const s of [...spans].sort(byFrom)) {
+    const last = out[out.length - 1];
+    if (last && s.from <= last.to) last.to = Math.max(last.to, s.to);
+    else out.push({ ...s });
   }
+  return out;
+}
 
-  // Don't carry spaces around the caret into either item.
-  let a = offset;
-  while (a > lineStart + m[0].length && /[ \t]/.test(text[a - 1])) a--;
-  let b = $to.parentOffset;
-  while (b < text.length && /[ \t]/.test(text[b])) b++;
+export function ghostAt(state: EditorState, pos: number): Span | null {
+  return layersOf(state).ghosts.find((g) => g.from <= pos && pos <= g.to) ?? null;
+}
 
-  const marker = `${indent}${bullet ?? `${Number(num) + 1}${delim}`}${space}`;
-  tr.replaceWith(start + a, start + b, [schema.nodes.hard_break.create(), schema.text(marker)]);
-  dispatch(tr.setSelection(TextSelection.create(tr.doc, start + a + 1 + marker.length)).scrollIntoView());
+/** Ghosts the selection, or revives it if any of it is ghosted. With no selection, revives the ghost at the caret. */
+export const toggleGhost: StateCommand = ({ state, dispatch }) => {
+  const { from, to, empty } = state.selection.main;
+  const l = layersOf(state);
+  let ghosts: Span[];
+  if (empty) {
+    const g = ghostAt(state, from);
+    if (!g) return false;
+    ghosts = l.ghosts.filter((x) => x !== g);
+  } else if (l.ghosts.some((g) => g.from < to && g.to > from)) {
+    ghosts = subtract(l.ghosts, from, to);
+  } else {
+    ghosts = union([...l.ghosts, { from, to }]);
+  }
+  dispatch(state.update({ effects: setLayers.of({ ...l, ghosts }) }));
   return true;
 };
 
-// ---------------------------------------------------------------------------
-// Counting
+export function reviveAt(state: EditorState, pos: number): TransactionSpec | null {
+  const g = ghostAt(state, pos);
+  const l = layersOf(state);
+  return g ? { effects: setLayers.of({ ...l, ghosts: l.ghosts.filter((x) => x !== g) }) } : null;
+}
 
-export function countWords(doc: Node): { words: number; chars: number } {
-  let text = "";
-  doc.forEach((p) => {
-    p.forEach((n) => {
-      if (n.isText && !ghost.isInSet(n.marks)) text += n.text;
-      else text += " ";
-    });
-    text += "\n";
+export const hasGhosts = (state: EditorState) => layersOf(state).ghosts.length > 0;
+
+export function reviveAll(state: EditorState): TransactionSpec | null {
+  return hasGhosts(state) ? { effects: setLayers.of({ ...layersOf(state), ghosts: [] }) } : null;
+}
+
+/** Deletes spans of text without leaving a double space behind. */
+export function deleteSpans(state: EditorState, spans: Span[]): ChangeSpec[] {
+  return spans.map((s) => {
+    const line = state.doc.lineAt(s.from);
+    const before = s.from > line.from ? state.doc.sliceString(s.from - 1, s.from) : " ";
+    const after = s.to < line.to ? state.doc.sliceString(s.to, s.to + 1) : "";
+    return { from: s.from, to: before === " " && after === " " ? s.to + 1 : s.to };
   });
+}
+
+/** Deletes all ghosted text: "make the cuts". */
+export function deleteGhosts(state: EditorState): TransactionSpec | null {
+  const { ghosts } = layersOf(state);
+  return ghosts.length ? { changes: deleteSpans(state, ghosts) } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Overflow and counting
+
+export function takeSelectionText(state: EditorState): { spec: TransactionSpec; text: string } | null {
+  const { from, to, empty } = state.selection.main;
+  if (empty) return null;
+  return { spec: { changes: { from, to }, scrollIntoView: true }, text: state.doc.sliceString(from, to) };
+}
+
+export function countWords(state: EditorState): { words: number; chars: number } {
+  let text = state.doc.toString();
+  // Ghosted text doesn't count.
+  for (const g of [...layersOf(state).ghosts].sort((a, b) => b.from - a.from)) {
+    text = `${text.slice(0, g.from)} ${text.slice(g.to)}`;
+  }
   const words = text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
   return { words, chars: text.replace(/\s/g, "").length };
 }

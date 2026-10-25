@@ -1,6 +1,7 @@
 # Moving the editor to CodeMirror 6
 
-Status: plan, not started. Written 2026-10-20.
+Status: done on the `codemirror` branch, 2026-10-25. Phase 1 is on `main`. The open decisions took
+their defaults. Written 2026-10-20.
 
 ## Goals
 

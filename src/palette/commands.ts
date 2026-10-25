@@ -1,25 +1,26 @@
-import { undoDepth, redoDepth, undo, redo } from "prosemirror-history";
-import { TextSelection, Transaction } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
+import { redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
+import { EditorSelection, TransactionSpec } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { CHECKS, CheckId, TRIMS, TrimId } from "../ai/tasks";
 import {
   cycleAtCaret,
-  cycleParagraphAtCaret,
+  cycleVersionAtCaret,
   deleteGhosts,
   dropAlt,
+  ghostAt,
   hasGhosts,
   jumpToItem,
-  markRangeAt,
   reviveAll,
   setAltActive,
-  setParagraphActive,
+  setVersionActive,
   settleAll,
-  settleParagraph,
+  settleVersion,
   toggleGhost,
   versionedItems,
 } from "../editor/commands";
-import { CHECKS, CheckId, TRIMS, TrimId } from "../ai/tasks";
-import { inlineText } from "../editor/markdown";
-import { schema } from "../editor/schema";
+import { inlineText } from "../editor/format";
+import { layersOf } from "../editor/layers";
+import { toggleBold, toggleCode, toggleItalic, toggleLink, toggleStrike } from "../editor/keys";
 import { EditorInfo } from "../editor/setup";
 
 export interface PaletteCommand {
@@ -65,7 +66,7 @@ export interface PaletteContext {
 }
 
 /** Group order when the query is empty. The most contextual groups come first. */
-export const GROUPS = ["Alternatives", "Lab", "Paragraph", "Ghost", "Overflow", "Go to", "View", "Document", "Edit", "Settings"];
+export const GROUPS = ["Alternatives", "Lab", "Paragraph", "Ghost", "Overflow", "Go to", "Format", "View", "Document", "Edit", "Settings"];
 
 const quote = (text: string, max = 36) => `“${text.length > max ? `${text.slice(0, max - 1)}…` : text}”`;
 
@@ -73,8 +74,9 @@ const quote = (text: string, max = 36) => `“${text.length > max ? `${text.slic
 export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
   const { view, info, actions } = ctx;
   const { state } = view;
-  const sel = state.selection;
-  const apply = (tr: Transaction | null) => tr && view.dispatch(tr.scrollIntoView());
+  const sel = state.selection.main;
+  const apply = (spec: TransactionSpec | null) => spec && view.dispatch(spec, { scrollIntoView: true });
+  const run = (cmd: typeof undo) => cmd({ state: view.state, dispatch: (tr) => view.dispatch(tr) });
   const out: PaletteCommand[] = [];
   const add = (cmd: PaletteCommand) => out.push(cmd);
 
@@ -159,7 +161,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
 
   // Paragraph versions
   if (info.para) {
-    const { pos, variants, active } = info.para;
+    const { at, variants, active } = info.para;
     add({
       id: "para.fork",
       group: "Paragraph",
@@ -169,8 +171,8 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       run: actions.fork,
     });
     if (variants.length > 1) {
-      add({ id: "para.next", group: "Paragraph", title: "Next paragraph version", shortcut: "⌥⇧J", run: () => apply(cycleParagraphAtCaret(view.state, 1)) });
-      add({ id: "para.prev", group: "Paragraph", title: "Previous paragraph version", shortcut: "⌥⇧K", run: () => apply(cycleParagraphAtCaret(view.state, -1)) });
+      add({ id: "para.next", group: "Paragraph", title: "Next paragraph version", shortcut: "⌥⇧J", run: () => apply(cycleVersionAtCaret(view.state, 1)) });
+      add({ id: "para.prev", group: "Paragraph", title: "Previous paragraph version", shortcut: "⌥⇧K", run: () => apply(cycleVersionAtCaret(view.state, -1)) });
       variants.forEach((v, i) => {
         if (i === active) return;
         add({
@@ -179,7 +181,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
           group: "Paragraph",
           title: `Switch to version ${i + 1}: ${quote(inlineText(v), 40)}`,
           keywords: i === 0 ? "original" : "variant",
-          run: () => apply(setParagraphActive(view.state, pos, i)),
+          run: () => apply(setVersionActive(view.state, at, i)),
         });
       });
       add({
@@ -187,26 +189,26 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
         group: "Paragraph",
         title: "Keep this version, drop the other paragraph versions",
         keywords: "accept settle remove clear choose",
-        run: () => apply(settleParagraph(view.state, pos)),
+        run: () => apply(settleVersion(view.state, at)),
       });
     }
   }
 
   // Ghost
   if (!sel.empty) {
-    const ghosted = state.doc.rangeHasMark(sel.from, sel.to, schema.marks.ghost);
+    const ghosted = layersOf(state).ghosts.some((g) => g.from < sel.to && g.to > sel.from);
     add({
       id: ghosted ? "ghost.revive" : "ghost.add",
       group: "Ghost",
       title: ghosted ? "Revive the selection" : "Ghost the selection",
       shortcut: "⌘/",
       keywords: "dim fade hide maybe cut",
-      run: () => toggleGhost(view.state, view.dispatch),
+      run: () => run(toggleGhost),
     });
-  } else if (markRangeAt(state.doc, sel.from, schema.marks.ghost)) {
-    add({ id: "ghost.revive", group: "Ghost", title: "Revive this ghosted text", shortcut: "⌘/", keywords: "undim restore show", run: () => toggleGhost(view.state, view.dispatch) });
+  } else if (ghostAt(state, sel.from)) {
+    add({ id: "ghost.revive", group: "Ghost", title: "Revive this ghosted text", shortcut: "⌘/", keywords: "undim restore show", run: () => run(toggleGhost) });
   }
-  if (hasGhosts(state.doc)) {
+  if (hasGhosts(state)) {
     add({ id: "ghost.reviveAll", group: "Ghost", title: "Revive all ghosted text", keywords: "undim restore show", run: () => apply(reviveAll(view.state)) });
     add({ id: "ghost.cut", group: "Ghost", title: "Delete all ghosted text", keywords: "make the cuts trim remove", run: () => apply(deleteGhosts(view.state)) });
   }
@@ -225,19 +227,19 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
   });
 
   // Go to
-  const items = versionedItems(state.doc);
+  const items = versionedItems(state);
   if (items.length) {
-    add({ id: "goto.next", group: "Go to", title: "Next word or paragraph with versions", shortcut: "⌥L", keywords: "jump navigate", run: () => apply(jumpToItem(view.state, 1, null)?.tr ?? null) });
-    add({ id: "goto.prev", group: "Go to", title: "Previous word or paragraph with versions", shortcut: "⌥H", keywords: "jump navigate", run: () => apply(jumpToItem(view.state, -1, null)?.tr ?? null) });
+    add({ id: "goto.next", group: "Go to", title: "Next word or paragraph with versions", shortcut: "⌥L", keywords: "jump navigate", run: () => apply(jumpToItem(view.state, 1, null)?.spec ?? null) });
+    add({ id: "goto.prev", group: "Go to", title: "Previous word or paragraph with versions", shortcut: "⌥H", keywords: "jump navigate", run: () => apply(jumpToItem(view.state, -1, null)?.spec ?? null) });
     for (const item of items) {
-      const text = item.kind === "alt" ? state.doc.textBetween(item.from, item.to) : state.doc.textBetween(item.from, item.to, " ");
+      const text = state.doc.sliceString(item.from, item.to).replace(/\n/g, " ");
       add({
         id: `goto.${item.from}`,
         dynamic: true,
         group: "Go to",
         title: item.kind === "alt" ? `Go to ${quote(text)}` : `Go to paragraph ${quote(text, 40)}`,
         keywords: "jump navigate",
-        run: () => apply(view.state.tr.setSelection(TextSelection.create(view.state.doc, item.from))),
+        run: () => apply({ selection: EditorSelection.cursor(item.from) }),
       });
     }
   }
@@ -279,9 +281,21 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
   add({ id: "settings.key", group: "Settings", title: "Set the Anthropic API key…", keywords: "ai claude token keychain", run: actions.setKey });
   add({ id: "settings.subscription", group: "Settings", title: "Use your Claude subscription…", keywords: "ai claude code login account plan pro max", run: actions.connectSubscription });
 
+  // Format
+  const format = [
+    { id: "bold", title: "Bold", shortcut: "⌘B", cmd: toggleBold },
+    { id: "italic", title: "Italic", shortcut: "⌘I", cmd: toggleItalic },
+    { id: "code", title: "Inline code", shortcut: "⌘E", cmd: toggleCode },
+    { id: "strike", title: "Strikethrough", shortcut: undefined, cmd: toggleStrike },
+    { id: "link", title: "Link", shortcut: "⌘⇧K", cmd: toggleLink },
+  ];
+  for (const f of format) {
+    add({ id: `format.${f.id}`, group: "Format", title: f.title, shortcut: f.shortcut, keywords: "markdown style", run: () => run(f.cmd) });
+  }
+
   // Edit
-  if (undoDepth(state) > 0) add({ id: "edit.undo", group: "Edit", title: "Undo", shortcut: "⌘Z", run: () => undo(view.state, view.dispatch) });
-  if (redoDepth(state) > 0) add({ id: "edit.redo", group: "Edit", title: "Redo", shortcut: "⌘⇧Z", run: () => redo(view.state, view.dispatch) });
+  if (undoDepth(state) > 0) add({ id: "edit.undo", group: "Edit", title: "Undo", shortcut: "⌘Z", run: () => run(undo) });
+  if (redoDepth(state) > 0) add({ id: "edit.redo", group: "Edit", title: "Redo", shortcut: "⌘⇧Z", run: () => run(redo) });
 
   return out;
 }

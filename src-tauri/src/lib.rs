@@ -32,6 +32,27 @@ fn write_text(path: String, contents: String) -> Result<(), String> {
     fs::rename(&tmp, target).map_err(|e| format!("Could not save {path}: {e}"))
 }
 
+/// Only web and mail links, with no spaces or control characters.
+fn safe_url(url: &str) -> Result<&str, String> {
+    let lower = url.to_lowercase();
+    let scheme_ok = ["http://", "https://", "mailto:"].iter().any(|s| lower.starts_with(s));
+    if scheme_ok && !url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        Ok(url)
+    } else {
+        Err(format!("Undertext only opens web and mail links: {url}"))
+    }
+}
+
+/// Opens a link from the page in the default browser or mail app.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    std::process::Command::new("/usr/bin/open")
+        .arg(safe_url(&url)?)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not open {url}: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -40,6 +61,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_text,
             write_text,
+            open_url,
             ai::ai_key_status,
             ai::ai_set_key,
             ai::ai_clear_key,
@@ -64,5 +86,16 @@ mod tests {
         assert!(document_path("/Users/me/.zshrc").is_err());
         assert!(document_path("/Users/me/.ssh/id_ed25519").is_err());
         assert!(document_path("/tmp/notes.md.sh").is_err());
+    }
+
+    #[test]
+    fn only_web_and_mail_links_open() {
+        assert!(safe_url("https://example.com/a?b=c").is_ok());
+        assert!(safe_url("HTTP://example.com").is_ok());
+        assert!(safe_url("mailto:me@example.com").is_ok());
+        assert!(safe_url("file:///etc/passwd").is_err());
+        assert!(safe_url("/Applications/Calculator.app").is_err());
+        assert!(safe_url("-a Calculator").is_err());
+        assert!(safe_url("https://example.com/a b").is_err());
     }
 }

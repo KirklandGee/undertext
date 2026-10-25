@@ -1,6 +1,8 @@
-import { EditorState, Plugin, PluginKey, TextSelection, Transaction } from "prosemirror-state";
-import { Decoration, DecorationSet } from "prosemirror-view";
-import { schema } from "./schema";
+import { EditorSelection, EditorState, StateEffect, StateField, TransactionSpec } from "@codemirror/state";
+import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
+import { deleteSpans } from "./commands";
+import { Span } from "./format";
+import { layersOf, setLayers } from "./layers";
 
 // The Lab layer: temporary results from a check or a trim. Nothing here is
 // saved to the file or changes the text until you act on it.
@@ -8,9 +10,7 @@ import { schema } from "./schema";
 // - marks: spans with a reason ("Hedge: softens the claim").
 // - cuts:  spans a trim proposes to delete, shown faded. Click one to keep it.
 
-export interface LabSpan {
-  from: number;
-  to: number;
+export interface LabSpan extends Span {
   reason?: string;
 }
 
@@ -32,116 +32,106 @@ type LabAction =
   | { type: "remove"; from: number; to: number }
   | { type: "clear" };
 
-export const labKey = new PluginKey<LabState>("undertext-lab");
+const labEffect = StateEffect.define<LabAction>();
+const empty: LabState = { kind: null, meta: null, set: Decoration.none };
 
-const empty: LabState = { kind: null, meta: null, set: DecorationSet.empty };
+export const labField = StateField.define<LabState>({
+  create: () => empty,
+  update(prev, tr) {
+    const action = tr.effects.find((e) => e.is(labEffect))?.value as LabAction | undefined;
+    if (action?.type === "clear") return empty;
+    if (action?.type === "set") {
+      const decos = action.spans.map((s) =>
+        Decoration.mark(
+          action.kind === "marks"
+            ? { class: "lab-mark", attributes: { title: s.reason ?? "" }, reason: s.reason }
+            : { class: "lab-cut", attributes: { title: "Proposed cut. Click to keep it." } },
+        ).range(s.from, s.to),
+      );
+      return { kind: action.kind, meta: action.meta, set: Decoration.set(decos, true) };
+    }
+    if (!prev.kind) return prev;
 
-export const labPlugin = new Plugin<LabState>({
-  key: labKey,
-  state: {
-    init: () => empty,
-    apply(tr, prev, _old, state) {
-      const action = tr.getMeta(labKey) as LabAction | undefined;
-      if (action?.type === "clear") return empty;
-      if (action?.type === "set") {
-        const decos = action.spans.map((s) =>
-          Decoration.inline(
-            s.from,
-            s.to,
-            action.kind === "marks"
-              ? { class: "lab-mark", title: s.reason ?? "" }
-              : { class: "lab-cut", title: "Proposed cut. Click to keep it." },
-            { reason: s.reason },
-          ),
-        );
-        return { kind: action.kind, meta: action.meta, set: DecorationSet.create(state.doc, decos) };
-      }
-      if (!prev.kind) return prev;
-
-      let set = prev.set.map(tr.mapping, tr.doc);
-      if (action?.type === "remove") set = set.remove(set.find(action.from, action.to));
-      // Editing inside a mark or cut drops it: the text it described is gone.
-      if (tr.docChanged) {
-        tr.mapping.maps.forEach((map, i) => {
-          map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-            const after = tr.mapping.slice(i + 1);
-            const from = after.map(newStart, -1);
-            const to = after.map(newEnd, 1);
-            set = set.remove(set.find(from, to).filter((d) => d.from < to && d.to > from));
-          });
-        });
-      }
-      return set.find().length ? { ...prev, set } : empty;
-    },
+    let set = prev.set.map(tr.changes);
+    if (action?.type === "remove") set = set.update({ filter: (f, t) => !(f === action.from && t === action.to) });
+    // Editing inside a mark or cut drops it: the text it described is gone.
+    tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+      set = set.update({ filter: (f, t) => !(f < toB && t > fromB) });
+    });
+    return set.size ? { ...prev, set } : empty;
   },
-  props: {
-    decorations: (state) => labKey.getState(state)?.set,
-    handleClick(view, pos) {
-      const cut = labSpanAt(view.state, pos, "cuts");
-      if (!cut) return false;
-      view.dispatch(keepCut(view.state.tr, cut));
-      return true;
-    },
-  },
+  provide: (f) => EditorView.decorations.from(f, (s) => s.set),
 });
 
 export function labState(state: EditorState): LabState {
-  return labKey.getState(state) ?? empty;
+  return state.field(labField, false) ?? empty;
 }
 
 /** Marks or cuts in document order. */
 export function labSpans(state: EditorState): LabSpan[] {
-  return labState(state)
-    .set.find()
-    .map((d) => ({ from: d.from, to: d.to, reason: d.spec.reason as string | undefined }))
-    .sort((a, b) => a.from - b.from);
+  const out: LabSpan[] = [];
+  const iter = labState(state).set.iter();
+  for (; iter.value; iter.next()) out.push({ from: iter.from, to: iter.to, reason: iter.value.spec.reason });
+  return out;
 }
 
 export function labSpanAt(state: EditorState, pos: number, kind?: "marks" | "cuts"): LabSpan | null {
   const lab = labState(state);
   if (!lab.kind || (kind && lab.kind !== kind)) return null;
-  const hit = lab.set.find(pos, pos).find((d) => d.from <= pos && pos <= d.to);
-  return hit ? { from: hit.from, to: hit.to, reason: hit.spec.reason } : null;
+  return labSpans(state).find((s) => s.from <= pos && pos <= s.to) ?? null;
 }
 
-export const setLab = (tr: Transaction, kind: "marks" | "cuts", meta: LabMeta, spans: LabSpan[]) =>
-  tr.setMeta(labKey, { type: "set", kind, meta, spans } satisfies LabAction);
+export const setLab = (kind: "marks" | "cuts", meta: LabMeta, spans: LabSpan[]): TransactionSpec => ({
+  effects: labEffect.of({ type: "set", kind, meta, spans }),
+});
 
-export const clearLab = (tr: Transaction) => tr.setMeta(labKey, { type: "clear" } satisfies LabAction);
+export const clearLab = (): TransactionSpec => ({ effects: labEffect.of({ type: "clear" }) });
 
-export const keepCut = (tr: Transaction, span: LabSpan) =>
-  tr.setMeta(labKey, { type: "remove", from: span.from, to: span.to } satisfies LabAction);
+export const keepCut = (span: LabSpan): TransactionSpec => ({
+  effects: labEffect.of({ type: "remove", from: span.from, to: span.to }),
+});
 
 /** Moves the caret to the next or previous mark or cut. Returns null when there is none. */
-export function jumpToLabSpan(state: EditorState, dir: 1 | -1): Transaction | null {
+export function jumpToLabSpan(state: EditorState, dir: 1 | -1): TransactionSpec | null {
   const spans = labSpans(state);
   if (!spans.length) return null;
-  const head = state.selection.head;
+  const head = state.selection.main.head;
   let index = dir > 0 ? spans.findIndex((s) => s.from > head) : spans.findLastIndex((s) => s.from < head);
   if (index < 0) index = dir > 0 ? 0 : spans.length - 1;
-  const span = spans[index];
-  return state.tr.setSelection(TextSelection.create(state.doc, span.from)).scrollIntoView();
+  return { selection: EditorSelection.cursor(spans[index].from), scrollIntoView: true };
 }
 
 /** Applies every proposed cut: deletes it, and avoids leaving a double space behind. */
-export function makeCuts(state: EditorState): Transaction | null {
+export function makeCuts(state: EditorState): TransactionSpec | null {
   const spans = labSpans(state);
   if (!spans.length) return null;
-  const tr = clearLab(state.tr);
-  for (const s of [...spans].reverse()) {
-    const $from = state.doc.resolve(s.from);
-    const before = s.from > $from.start() ? state.doc.textBetween(s.from - 1, s.from) : " ";
-    const after = s.to < $from.end() ? state.doc.textBetween(s.to, s.to + 1) : "";
-    tr.delete(s.from, before === " " && after === " " ? s.to + 1 : s.to);
-  }
-  return tr;
+  return { changes: deleteSpans(state, spans), effects: labEffect.of({ type: "clear" }) };
 }
 
 /** Turns marks or proposed cuts into ordinary ghosts, which are saved with the file. */
-export function ghostLabSpans(state: EditorState): Transaction | null {
+export function ghostLabSpans(state: EditorState): TransactionSpec | null {
   const spans = labSpans(state);
   if (!spans.length) return null;
-  const tr = clearLab(state.tr);
-  for (const s of spans) tr.addMark(s.from, s.to, schema.marks.ghost.create());
-  return tr;
+  const l = layersOf(state);
+  const ghosts = [...l.ghosts, ...spans.map(({ from, to }) => ({ from, to }))].sort((a, b) => a.from - b.from);
+  const merged: Span[] = [];
+  for (const g of ghosts) {
+    const last = merged[merged.length - 1];
+    if (last && g.from <= last.to) last.to = Math.max(last.to, g.to);
+    else merged.push({ ...g });
+  }
+  return { effects: [setLayers.of({ ...l, ghosts: merged }), labEffect.of({ type: "clear" })] };
 }
+
+/** Clicking a proposed cut keeps that text. */
+const keepOnClick = EditorView.domEventHandlers({
+  click(e, view) {
+    const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+    const cut = pos === null ? null : labSpanAt(view.state, pos, "cuts");
+    if (!cut) return false;
+    view.dispatch(keepCut(cut));
+    return true;
+  },
+});
+
+export const lab = [labField, keepOnClick];
