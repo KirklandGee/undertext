@@ -30,6 +30,9 @@ pnpm tauri build --bundles app    # src-tauri/target/release/bundle/macos/Undert
   change depends on them, check it in `pnpm tauri dev`, or say it is not verified.
 - Never weaken a check to pass it: no skipped or deleted tests, no loosened assertions. If a
   check is wrong, stop and say why.
+- At the end of a turn that changed code `pnpm verify` hasn't passed, a hook sends you back
+  once. Run it, or say what is not verified and stop. `git push` and `gh pr merge` ask the
+  owner first.
 - Report what ran, what it showed, and what you did not verify. How this works:
   `docs/agents.md`.
 

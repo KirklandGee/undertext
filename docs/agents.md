@@ -10,19 +10,69 @@ is proof; "I read the code" is not.
 
 1. **`pnpm verify`** runs every check, in about 10 seconds, and records the tree when they all
    pass.
-2. **CI** runs `pnpm verify` on GitHub for every push to `main` and every pull request.
-3. **`CLAUDE.md`** tells every agent session what done means and to run `pnpm verify`.
+2. **The end-of-turn gate** sends Claude back once when a turn changed code that `pnpm verify`
+   hasn't passed.
+3. **Ask first:** Claude Code asks you before it pushes or merges.
+4. **CI** runs `pnpm verify` on GitHub for every push to `main` and every pull request.
+5. **`CLAUDE.md`** tells every agent session what done means and to run `pnpm verify`.
 
 ## Rules, and what holds them
 
 | Rule | What holds it | How sure |
 | --- | --- | --- |
 | Types, tests, web build, and Rust format, lint, and tests pass | `pnpm verify`, then CI | Checked. CI shows a red run, but nothing blocks a push to `main`. |
-| Run `pnpm verify` before calling work done | `CLAUDE.md` | Asked |
+| Run `pnpm verify` before calling work done | The end-of-turn gate, `CLAUDE.md` | Checked once per turn. Claude may stop the second time, and must say what is not verified. |
+| Push or merge only when you say so | Claude Code `ask` rules | Checked for the usual commands. A speed bump, not a lock. |
 | Never weaken a check to pass it | `CLAUDE.md` | Asked |
 | Say what was not verified | `CLAUDE.md` | Asked |
 
 "Asked" means an agent can forget it. Later steps turn some of these into checks.
+
+## The end-of-turn gate
+
+Two Claude Code hooks in `.claude/settings.json` run `scripts/guard.mjs`:
+
+- When a turn starts, it records a hash of every file, as `pnpm verify` does.
+- When Claude stops, it compares the tree with that record. If the turn changed code (anything
+  but docs) and `pnpm verify` hasn't passed on the tree as it is now, it sends Claude back with
+  the files it changed and what to do.
+- It does this **once per turn**. The second stop goes through, so Claude can stop on purpose.
+  It then has to say what is not verified. Another Stop hook, such as a loop plugin, doesn't turn
+  it off.
+- Turns that changed nothing, changed only docs, or undid their edits go through.
+- A turn that changed only CI files can't be verified on your Mac. The gate asks Claude to say so.
+
+**It fails open.** If the guard breaks, it lets the turn through. Usually it shows a message that
+starts with "Undertext guard". If it crashes outright or takes too long, Claude Code shows its own
+hook error instead. Either way, the turn was not checked.
+
+**Limits:**
+
+- It sees every change in the turn, also yours: an edit you make in another editor while Claude
+  works counts.
+- It checks the checkout it lives in, or a linked worktree of it that the session is in. Edits in
+  another repository are not checked. A turn that moves to another checkout is not checked, and
+  the message says so.
+- Two sessions in the same checkout see each other's edits. Each may send its Claude back once for
+  the other's work.
+- Only Claude Code runs it. Codex, Amp, and Cursor are not set up here.
+
+Its records live in `.git/undertext/turns/`, one file per session, shared by every worktree. Files
+older than a week are deleted. Its tests, in `scripts/guard.test.mjs`, run copies of the guard in throwaway
+repositories.
+
+## Ask first
+
+`.claude/settings.json` has `ask` rules for `git push`, `gh pr merge`, and any command with
+`--no-verify`. Claude Code then asks you, even in auto mode, and even inside a longer command such
+as `cd x && git push`.
+
+- **It is a speed bump.** It matches the commands Claude usually writes. A different form of the
+  same thing, such as a script that pushes, gets through.
+- `--no-verify` skips git hooks. This repository has none today, so that rule guards nothing yet.
+  It misses the short form, `git commit -n`.
+- The real lock would be branch protection on GitHub. You push to `main` yourself, so there is
+  none.
 
 ## `pnpm verify`
 

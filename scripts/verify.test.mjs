@@ -1,60 +1,10 @@
-// Runs copies of the verify scripts in throwaway repositories, never in this checkout. A fake check
-// stands in for the real ones: it counts its runs, fails while a `broken` file exists, and writes a
-// file into the tree while a `touch` file exists.
-import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+// Runs copies of the verify scripts in throwaway repositories (see test-repo.mjs).
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { fakeSteps, makeRepo, passFile, recorded, tempDir, verify } from "./test-repo.mjs";
 import { git, snapshot } from "./tree.mjs";
 import { cargoPassed, vitestPassed } from "./verify-steps.mjs";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const made = [];
-afterEach(() => made.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
-
-const tempDir = () => {
-  const dir = mkdtempSync(join(tmpdir(), "undertext-verify-test-"));
-  made.push(dir);
-  return dir;
-};
-
-const FAKE_CHECK = `const fs = require("fs");
-fs.appendFileSync(process.env.RUNS, "x");
-if (fs.existsSync("broken")) process.exit(1);
-if (fs.existsSync("touch")) fs.writeFileSync("made-during-run.txt", "x");`;
-
-const fakeSteps = (step = `{ name: "check", cmd: process.execPath, args: ["-e", ${JSON.stringify(FAKE_CHECK)}] }`) =>
-  `export const unseen = "nothing";\nexport const steps = () => [${step}];\n`;
-
-function makeRepo(steps = fakeSteps()) {
-  const dir = tempDir();
-  mkdirSync(join(dir, "scripts"));
-  for (const file of ["verify.mjs", "tree.mjs"]) copyFileSync(join(here, file), join(dir, "scripts", file));
-  writeFileSync(join(dir, "scripts/verify-steps.mjs"), steps);
-  writeFileSync(join(dir, "app.js"), "ok\n");
-  writeFileSync(join(dir, "README.md"), "# App\n");
-  writeFileSync(join(dir, ".gitignore"), "ignored/\n");
-  git(dir, "init", "-q");
-  git(dir, "add", ".");
-  git(dir, "-c", "commit.gpgsign=false", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "Start");
-  return dir;
-}
-
-function verify(dir, args = [], env = {}) {
-  const runs = join(tempDir(), "runs");
-  writeFileSync(runs, "");
-  const result = spawnSync(process.execPath, [join(dir, "scripts/verify.mjs"), ...args], {
-    cwd: tmpdir(),
-    env: { ...process.env, RUNS: runs, ...env },
-    encoding: "utf8",
-  });
-  return { status: result.status, out: result.stdout + result.stderr, runs: readFileSync(runs, "utf8").length };
-}
-
-const passFile = (dir) => join(dir, ".git/undertext/verified.json");
-const recorded = (dir) => (existsSync(passFile(dir)) ? JSON.parse(readFileSync(passFile(dir), "utf8")).fingerprint : null);
 
 describe("pnpm verify", () => {
   it("records a pass, then skips an unchanged tree unless forced", () => {

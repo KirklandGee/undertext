@@ -17,7 +17,12 @@ function gitEnv() {
 }
 
 export const git = (root, ...args) =>
-  execFileSync("git", ["-C", root, ...args], { env: gitEnv(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("git", ["-C", root, ...args], {
+    env: gitEnv(),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 256 * 1024 * 1024,
+  });
 
 /**
  * Every file git sees in `root`: tracked, staged and untracked, but not ignored. Hashes contents, so
