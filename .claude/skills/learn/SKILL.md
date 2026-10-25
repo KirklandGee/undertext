@@ -10,11 +10,12 @@ description: Turns a correction or a repeated mistake into a check that catches 
    1. a type, in TypeScript or Rust
    2. a test, in `src/`, `src-tauri/`, or `scripts/`
    3. a script check: a step in `scripts/verify-steps.mjs`, or the gate in `scripts/guard.mjs`
-   4. a line in `CLAUDE.md` or a skill, only for what no code can check
+   4. a review check in `.agents/checks/`, for what needs judgment
+   5. a line in `CLAUDE.md` or a skill, only for what nothing else can hold
 
    A rule that is already written down and still broken goes straight to code.
 3. **Prove it catches the mistake:** make the mistake on purpose and see the check fail.
-4. **Delete the instructions it replaces** in `CLAUDE.md`, the skills, and `docs/`.
+4. **Delete the instructions it replaces** in `CLAUDE.md`, the skills, the checks, and `docs/`.
 5. **Update the rules table** in `docs/agents.md`: the rule, what holds it, and how sure.
 6. Make it its own small change. Commit it when the owner asks.
 

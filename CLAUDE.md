@@ -45,12 +45,17 @@ Use these without being asked. They are in `.claude/skills/`.
 - `build-feature`: anything new.
 - `refactor`: structure only, always as its own change.
 - `learn`: after the owner corrects you, or when a mistake repeats.
+- `review-changes`: when the owner says a change is ready, or asks for a review.
+
+Review checks are in `.agents/checks/`, one file per concern. Any review applies the ones that fit
+the change, whether an agent or a review tool runs it.
 
 ## How the editor works
 
 - The CodeMirror document is the page as plain Markdown. Undertext's own syntax is not in it.
 - `src/editor/format.ts` reads and writes the file: `{{a|>b}}` alternatives, `{-x-}` ghosts,
-  `:::alt` paragraph versions, `<!-- overflow -->`. It has no editor imports.
+  `:::alt` paragraph versions, `<!-- overflow -->`. It uses only the Markdown parser, no editor
+  code (`scripts/rules.test.mjs` checks).
 - `src/editor/layers.ts` keeps alternatives, ghosts, and versions as ranges beside the text, in a
   state field that maps through edits. Change them only with `setLayers`, in the same transaction
   as the text. Undo restores them from a snapshot when a change touches a layer.

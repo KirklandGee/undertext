@@ -14,9 +14,11 @@ is proof; "I read the code" is not.
    hasn't passed.
 3. **Ask first:** Claude Code asks you before it pushes or merges.
 4. **Skills** give each kind of work its first step and its proof: verify, fix a bug, build a
-   feature, refactor, learn from a mistake.
-5. **CI** runs `pnpm verify` on GitHub for every push to `main` and every pull request.
-6. **`CLAUDE.md`** tells every agent session what done means, which skill to use, and how tests
+   feature, refactor, learn from a mistake, review.
+5. **Review:** when you say a change is ready, fresh reviewers check it against the task and the
+   checks in `.agents/checks/`.
+6. **CI** runs `pnpm verify` on GitHub for every push to `main` and every pull request.
+7. **`CLAUDE.md`** tells every agent session what done means, which skill to use, and how tests
    are written.
 
 ## Rules, and what holds them
@@ -29,6 +31,9 @@ is proof; "I read the code" is not.
 | Fix a bug with a failing test first; refactor without changing assertions | The `fix-bug` and `refactor` skills | Asked |
 | Expected values written by hand; each new test seen failing once | `CLAUDE.md` | Asked |
 | Instructions name only files and `pnpm` commands that exist, and each skill says when to use it | `scripts/docs.test.mjs`, in `pnpm verify` | Checked |
+| The file format code uses only the Markdown parser | `scripts/rules.test.mjs`, in `pnpm verify` | Checked |
+| Reviewers see the task and the diff, never the author's reasoning | The `review-changes` skill | Asked |
+| Tests not weakened, the editor's design, saved files, the app boundary, privacy, and plain words | The six checks in `.agents/checks/` | Reviewed, when a review runs |
 | Never weaken a check to pass it | `CLAUDE.md` | Asked |
 | Say what was not verified | `CLAUDE.md` | Asked |
 
@@ -92,7 +97,8 @@ them without being asked.
 | `fix-bug` | Anything broken | A test that fails on the exact symptom | Undo the fix: the test fails. Restore it: it passes. |
 | `build-feature` | Anything new | Read the closest feature; settle your decisions in one round | One test per behavior, written first |
 | `refactor` | Structure only | Tests that pin today's behavior | The same tests pass, with their expected values untouched |
-| `learn` | A correction, or a mistake that repeats | Pick the strongest structure: type, test, script check, then a line of text | The check fails when the mistake is made on purpose |
+| `learn` | A correction, or a mistake that repeats | Pick the strongest structure: type, test, script check, review check, then a line of text | The check fails when the mistake is made on purpose |
+| `review-changes` | A change you call ready | Write a brief with your words, never the author's opinion | Each finding fixed, dismissed with evidence, or left open for you |
 
 ## Asking for work
 
@@ -101,6 +107,8 @@ them without being asked.
 | A bug fix | What you did, what happened, what should happen | Confirm Claude's restatement if the report was vague |
 | A feature | What it should do, and how you'd check it works | Answer the decisions Claude lists, all at once |
 | A refactor | What should get easier, and that behavior must not change | Read the list of tests whose expected values stayed the same |
+| A review | "Review this", or "it's ready for a PR" | Decide on the findings left open |
+| A release | "Ready to release: review it, then build and install the app" | Read the open findings first. After the install, open the app and try the change. |
 
 Any request works better with:
 
@@ -114,6 +122,46 @@ Leave out the method and your theory of the cause, unless you are sure. They anc
 them. Start a new session for unrelated work, so it starts with a clean context.
 
 Then read the report's "Not verified" part. Try in the app what Claude couldn't.
+
+## Review
+
+Run a review when a change is ready for a pull request or a release, or whenever you ask. It
+costs several agent runs, so it doesn't run on its own. During work, `pnpm verify` is the check.
+
+The `review-changes` skill briefs fresh subagents with the task in your words, what done means,
+and the decisions made. They never see the author's opinion of the change.
+
+- **A task review**, always: missing pieces, changes nobody asked for, and tests that would pass
+  with the feature broken.
+- **A blast-radius review**, when the change touches code or config others rely on: the file
+  format, the layers, the Rust commands, the app and permission config, or `scripts/`. It names
+  the one fact that makes the change safe, and proves it by running code.
+- **A code review** for each check that fits the change:
+
+| Check | Covers |
+| --- | --- |
+| `.agents/checks/tests.md` | Tests not weakened, new behavior tested |
+| `.agents/checks/editor.md` | How the editor is built: layers, commands, plain Markdown in the document |
+| `.agents/checks/file-format.md` | Saved files keep the user's writing, and old files still open |
+| `.agents/checks/app-boundary.md` | What the web view may ask the Mac to do: files, links, the keychain, `claude` |
+| `.agents/checks/privacy.md` | No keys, real personal writing, or machine paths in a public repository |
+| `.agents/checks/words.md` | Plain UI text and docs, and instructions that agree with each other and the code |
+
+There are no translations to check: the UI is English only.
+
+Reviewers work in their own git worktree, with the change copied in, never in the shared tree. Each finding is settled with
+evidence: the cited line for what the diff shows, a test or command for behavior. A finding is
+fixed, dismissed with that evidence, or left open for you.
+
+## Improving the system
+
+- When a mistake repeats, say so. The `learn` skill turns it into the strongest check that holds
+  it, and updates the rules table above.
+- When a review keeps finding the same kind of problem, turn it into a test if code can catch it.
+  If it needs judgment, add it to a check in `.agents/checks/`, with what to report and what is
+  fine.
+- Prefer code to words: a test or a step in `pnpm verify` holds whether or not an agent
+  remembers.
 
 ## `pnpm verify`
 
@@ -140,8 +188,8 @@ It runs, in order, and prints one line per check:
   checks anyway, for example after `rustup update`.
 - **Only docs changed** since the last pass: nothing to check. It records the new tree. Docs are
   `docs/`, `LICENSE`, and Markdown outside `src/` and `src-tauri/`, but not the instructions:
-  `CLAUDE.md`, `README.md`, `docs/agents.md`, and everything in `.claude/`. The docs test reads
-  those, so a change to them runs every check.
+  `CLAUDE.md`, `README.md`, `docs/agents.md`, and everything in `.claude/` and `.agents/`. The docs
+  test reads those, so a change to them runs every check.
 - **Only CI files changed** (`.github/`): local checks can't see them. It records nothing, even
   with `--force`. Push and read the CI run.
 - It finds `cargo` on `PATH`, in `~/.cargo/bin`, or in Homebrew's rustup folder. Without cargo it
