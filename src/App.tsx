@@ -21,7 +21,7 @@ import { SubscriptionDialog } from "./components/SubscriptionDialog";
 import { LabBar } from "./components/LabBar";
 import { ContextMenu, MenuItem, MenuState } from "./components/ContextMenu";
 import { Icon } from "./components/Icon";
-import { clickPanel, pressPanelKey, RightTab, savedPanel } from "./components/panels";
+import { clickPanel, pressPanelKey, RightTab, savedHidden, savedPanel, toggleKinds } from "./components/panels";
 import { RightPanel } from "./components/RightPanel";
 import {
   addAiAlternatives,
@@ -45,8 +45,10 @@ import {
   wordRangeAt,
 } from "./editor/commands";
 import { parsePage } from "./editor/format";
+import { HighlightSettings, jumpToIssue, setHighlights } from "./editor/highlights";
 import { clearLab, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
 import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layers";
+import { Kind } from "./editor/readability";
 import { createEditorState, describe, EditorHandlers, EditorInfo, pageMarkdown } from "./editor/setup";
 import {
   askReloadChanged,
@@ -108,7 +110,9 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const paletteReturnRef = useRef<Element | null>(null);
 
-  const [prefs] = useState(() => readJSON<{ layers?: boolean; panel?: unknown; overflowOpen?: boolean }>(PREFS_KEY) ?? {});
+  const [prefs] = useState(
+    () => readJSON<{ layers?: boolean; panel?: unknown; overflowOpen?: boolean; hidden?: unknown }>(PREFS_KEY) ?? {},
+  );
   const [info, setInfo] = useState<EditorInfo | null>(null);
   const [overflow, setOverflowState] = useState("");
   const [file, setFileState] = useState<FileRef>(fileRef.current);
@@ -117,6 +121,10 @@ export default function App() {
   const [layers, setLayers] = useState(prefs.layers ?? true);
   const [altOpen, setAltOpen] = useState(false);
   const [panel, setPanel] = useState<RightTab | null>(() => savedPanel(prefs));
+  const [hidden, setHidden] = useState<Kind[]>(() => savedHidden(prefs));
+  /** Highlights show while Review is open. A new editor state starts with them as they are. */
+  const highlightsRef = useRef<HighlightSettings>({ on: false, hidden: [] });
+  highlightsRef.current = { on: panel === "review", hidden };
   const [tab, setTab] = useState<AltTab>("inline");
   const [focusKey, setFocusKey] = useState(0);
   const [panelFocusKey, setPanelFocusKey] = useState(0);
@@ -162,7 +170,7 @@ export default function App() {
     diskRef.current = disk === undefined ? (next.path ? md : null) : disk;
     const { text, alts, ghosts, versions, overflow: extra } = parsePage(md);
     const v = view();
-    v.setState(createEditorState(text, { alts, ghosts, versions }, () => handlersRef.current));
+    v.setState(createEditorState(text, { alts, ghosts, versions }, () => handlersRef.current, highlightsRef.current));
     overflowRef.current = extra;
     setOverflowState(extra);
     setFile(next);
@@ -600,7 +608,7 @@ export default function App() {
   useEffect(() => {
     const v = new EditorView({
       parent: mountRef.current!,
-      state: createEditorState("", emptyLayers, () => handlersRef.current),
+      state: createEditorState("", emptyLayers, () => handlersRef.current, highlightsRef.current),
       dispatchTransactions(trs, view) {
         view.update(trs);
         setInfo(describe(view.state));
@@ -652,7 +660,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeTick]);
 
-  useEffect(() => writeJSON(PREFS_KEY, { layers, panel }), [layers, panel]);
+  useEffect(() => writeJSON(PREFS_KEY, { layers, panel, hidden }), [layers, panel, hidden]);
+  useEffect(() => {
+    viewRef.current?.dispatch(setHighlights({ on: panel === "review", hidden }));
+  }, [panel, hidden]);
 
   useEffect(() => {
     if (panelFocusKey) panelRef.current?.querySelector<HTMLElement>("[data-focus]")?.focus();
@@ -774,6 +785,14 @@ export default function App() {
             panelRef={panelRef}
             overflow={overflow}
             busy={aiBusy}
+            checks={info?.checks ?? null}
+            words={words}
+            hidden={hidden}
+            onToggle={(kinds) => setHidden((h) => toggleKinds(h, kinds))}
+            onJump={(kinds) => {
+              dispatch(jumpToIssue(view().state, kinds, 1));
+              view().focus();
+            }}
             onTab={(next) => showPanel(next, true)}
             onOverflow={setOverflow}
             onFix={fixTypos}

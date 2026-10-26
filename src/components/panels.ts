@@ -1,3 +1,5 @@
+import { Kind, KINDS } from "../editor/readability";
+
 /** The right panel's tabs. The panel shows one at a time. */
 export type RightTab = "review" | "overflow";
 
@@ -19,4 +21,16 @@ export function savedPanel(prefs: { panel?: unknown; overflowOpen?: boolean }): 
   if (prefs.panel === "review" || prefs.panel === "overflow") return prefs.panel;
   if (prefs.panel === undefined && prefs.overflowOpen) return "overflow";
   return null;
+}
+
+/** An eye toggle: hides the kinds, or shows them again when all of them are hidden. */
+export function toggleKinds(hidden: readonly Kind[], kinds: readonly Kind[]): Kind[] {
+  if (kinds.every((k) => hidden.includes(k))) return hidden.filter((k) => !kinds.includes(k));
+  return [...hidden, ...kinds.filter((k) => !hidden.includes(k))];
+}
+
+/** The highlight kinds hidden last time. */
+export function savedHidden(prefs: { hidden?: unknown }): Kind[] {
+  const known: readonly unknown[] = KINDS;
+  return Array.isArray(prefs.hidden) ? prefs.hidden.filter((k): k is Kind => known.includes(k)) : [];
 }

@@ -13,6 +13,11 @@
   --menu: #191f33;
   --mark: rgba(240, 190, 90, 0.22);
   --mark-line: rgba(240, 190, 90, 0.7);
+  /* Live highlights. They keep clear of the accent, which belongs to alternatives. */
+  --hl-very-hard: rgba(240, 105, 105, 0.26);
+  --hl-hard: rgba(235, 205, 80, 0.2);
+  --hl-weak: rgba(90, 160, 245, 0.27);
+  --hl-simpler: rgba(95, 200, 130, 0.22);
   --mono: "iA Writer Mono S", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
   --text-size: 15px;
   color-scheme: dark;
@@ -34,6 +39,10 @@
     --menu: #ffffff;
     --mark: rgba(230, 160, 40, 0.2);
     --mark-line: rgba(200, 130, 20, 0.75);
+    --hl-very-hard: rgba(230, 70, 70, 0.2);
+    --hl-hard: rgba(245, 200, 30, 0.3);
+    --hl-weak: rgba(50, 130, 230, 0.2);
+    --hl-simpler: rgba(40, 170, 90, 0.2);
     color-scheme: light;
   }
 }
@@ -767,6 +776,130 @@ button:focus-visible {
 .side-body.review {
   gap: 0;
   margin: 0 -8px;
+}
+
+.review-label {
+  margin: 18px 8px 4px;
+  font-size: 11px;
+  font-weight: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Live highlights */
+
+.hl {
+  border-radius: 2px;
+}
+
+.hl-veryHard {
+  background: var(--hl-very-hard);
+}
+
+.hl-hard {
+  background: var(--hl-hard);
+}
+
+.hl-adverb,
+.hl-passive,
+.hl-qualifier,
+.hl-intensifier,
+.hl-filler,
+.hl-weak {
+  background: var(--hl-weak);
+}
+
+.hl-simpler {
+  background: var(--hl-simpler);
+}
+
+.readability {
+  padding: 0 8px 10px;
+  outline: none;
+}
+
+.grade {
+  font-size: 20px;
+  color: var(--heading);
+}
+
+.grade-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+/* Two lines, so the rows below don't move as the caret does. */
+.hl-here {
+  margin: 10px 0 0;
+  min-height: 2.8em;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-dim);
+}
+
+.hl-row {
+  display: flex;
+  align-items: center;
+}
+
+.hl-jump {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--fg-dim);
+}
+
+.hl-jump:not(:disabled):hover,
+.hl-jump:focus-visible {
+  background: var(--selection);
+  color: var(--fg);
+  outline: none;
+}
+
+.hl-row.sub .hl-jump {
+  padding-left: 22px;
+  font-size: 12px;
+}
+
+.hl-count {
+  flex: none;
+  min-width: 20px;
+  padding: 0 4px;
+  border-radius: 4px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.hl-row.sub .hl-count {
+  background: none;
+  min-width: 16px;
+  padding: 0;
+}
+
+.hl-row.off .hl-jump {
+  opacity: 0.45;
+}
+
+.hl-eye {
+  flex: none;
+  display: flex;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--faint);
+}
+
+.hl-eye:hover,
+.hl-eye:focus-visible {
+  color: var(--fg);
+  outline: none;
 }
 
 .lab-note {

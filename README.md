@@ -34,8 +34,9 @@ other ways you might say them.
   press ⌥J and ⌥K, to read each one in place.
 - **Paragraph versions.** Fork a paragraph, rewrite it in place, and switch between the versions.
 - **Ghost.** Dim text you might cut. It stays readable but easy to ignore.
-- **Review.** A side panel with optional AI help that marks, fixes, and trims, but never rewrites
-  your text on its own.
+- **Review.** A side panel that grades the page and highlights hard sentences, weakeners, and
+  simpler words as you type. Optional AI help marks, fixes, and trims, but never rewrites your text
+  on its own.
 - **Overflow.** A tab beside Review for leftovers you might use later.
 - **Keyboard first.** Every action has a shortcut, and ⌘K lists them all.
 
@@ -132,6 +133,18 @@ Older files wrote ghosts as `~~text~~`. Those now open as strikethrough.
 ## AI and Review
 
 Review is the first tab of the right panel. Press ⌘⇧E, or click the word count.
+
+**Highlights.** While Review is open, the page shows what makes it harder to read, in the style of
+[Hemingway Editor](https://hemingwayapp.com). The checks run on your machine, with no AI, and
+update as you type.
+
+- **Grade:** the Automated Readability Index of the page.
+- **Hard and very hard sentences** (yellow and red): 14 words or more, from grade 10 or 14.
+- **Weakeners** (blue): adverbs, passive voice, qualifiers, intensifiers, and fillers.
+- **Simpler words** (green): utilize → use, in order to → to.
+- Click a row to go to the next one. The eye hides a kind on the page but keeps its count. Put the
+  caret on a highlight to read why it's marked. Ghosted text isn't checked. The rules are for
+  English.
 
 The AI features are optional. They never rewrite your text on their own: every result is something
 you can see and undo.

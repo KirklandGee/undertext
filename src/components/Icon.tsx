@@ -3,6 +3,8 @@ const PATHS = {
   save: "M8 2.5v7m0 0L5 6.5m3 3 3-3M3 10.5v2a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2",
   alts: "M3 5h10M3 8h6M3 11h8",
   overflow: "M2.5 3.5h11v9h-11zM10 3.5v9",
+  eye: "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
+  eyeOff: "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM2.5 13.5l11-11",
 } as const;
 
 export function Icon({ name }: { name: keyof typeof PATHS }) {

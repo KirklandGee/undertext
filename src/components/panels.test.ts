@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clickPanel, pressPanelKey, savedPanel } from "./panels";
+import { clickPanel, pressPanelKey, savedHidden, savedPanel, toggleKinds } from "./panels";
 
 describe("the right panel", () => {
   it("opens a tab from its key and focuses it, from the page or the other tab", () => {
@@ -29,5 +29,24 @@ describe("the right panel", () => {
     expect(savedPanel({ overflowOpen: false })).toBe(null);
     expect(savedPanel({ panel: "lab" })).toBe(null);
     expect(savedPanel({})).toBe(null);
+  });
+});
+
+describe("Review's eye toggles", () => {
+  it("hide a kind, or show it again", () => {
+    expect(toggleKinds([], ["adverb"])).toEqual(["adverb"]);
+    expect(toggleKinds(["adverb", "hard"], ["adverb"])).toEqual(["hard"]);
+  });
+
+  it("hide a whole group unless all of it is hidden, then show it all", () => {
+    const group = ["adverb", "passive", "filler"] as const;
+    expect(toggleKinds(["adverb", "hard"], group)).toEqual(["adverb", "hard", "passive", "filler"]);
+    expect(toggleKinds(["adverb", "hard", "passive", "filler"], group)).toEqual(["hard"]);
+  });
+
+  it("come back from prefs, without kinds this version doesn't know", () => {
+    expect(savedHidden({ hidden: ["adverb", "grammar", 3, "simpler"] })).toEqual(["adverb", "simpler"]);
+    expect(savedHidden({ hidden: "adverb" })).toEqual([]);
+    expect(savedHidden({})).toEqual([]);
   });
 });

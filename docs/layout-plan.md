@@ -1,6 +1,7 @@
 # Plan: side panels with one job each, and room for Hemingway's checks
 
-Status: phase 1 built, 2026-10-26. See "Decisions taken" and "Open decisions" at the end.
+Status: phase 1 and the first slice of live checks built, 2026-10-26. See "Decisions taken" and
+"Open decisions" at the end.
 
 ## Goals
 
@@ -21,9 +22,11 @@ From its help pages, read on 2026-10-26.
   Default, or Technical.
 - **Highlights**, in color, inline:
   - Hard to read (yellow) and very hard to read (red) sentences.
-  - Weakeners (blue): adverbs, passive voice, qualifiers.
+  - Weakeners (blue): adverbs, passive voice, qualifiers, intensifiers, weak verbs, fillers,
+    hidden actions, and negative or indirect phrases. Each has its own count and eye.
   - Simpler words (purple): a word with a plainer synonym.
-  - Grammar and spelling (green), Plus only.
+  - Writing issues (green): grammar, spelling, and style, such as a sentence that starts with
+    "And". Plus only.
 - **A key on the right** with each category's count and an eye icon that shows or hides it.
 - **Stats**: words by default. More on request: letters, characters, sentences, paragraphs,
   reading time.
@@ -138,20 +141,28 @@ narrow window with both open, they overlap. That is fine at that width.
 
 ## Live checks
 
-All local, no network. A new module beside `src/editor/format.ts`, with no editor code, so it can
-be tested on plain strings.
+All local, no network. `src/editor/readability.ts` holds the rules and imports nothing, so its
+tests run on plain strings. `src/editor/highlights.ts` draws them on the page.
 
-- **Sentences**: split the page's paragraphs into sentences. Skip headings, code, and list markers.
-  Handle "e.g.", "Mr.", decimals, and quotes.
-- **Grade**: a published formula on words, sentences, and letters or syllables.
-- **Hard and very hard**: a sentence's own grade against the target.
-- **Adverbs**: -ly words, minus a stop list (only, family, reply).
-- **Passive voice**: a form of "be" followed by a past participle.
-- **Qualifiers**: a word list. Today's "hedges and filler" check has a start.
-- **Simpler words**: a phrase list (utilize → use, in order to → to).
+- **Prose**: paragraphs, list items, and quotes. Headings, code, tables, HTML, link addresses, and
+  ghosted text are skipped. A sentence never runs from one list item into the next.
+- **Sentences**: split after `.`, `!`, and `?`. Not after "Mr.", an initial, "e.g.", a decimal
+  point, or a word before a lowercase one. "No." and "fig." are abbreviations only before a number.
+- **Grade**: the Automated Readability Index, rounded, never below zero.
+- **Hard and very hard**: a sentence of 14 or more words, by its own grade: hard from 10, very hard
+  from 14.
+- **Adverbs**: -ly words, minus a list of words that only end in -ly (family, only, early).
+- **Passive voice**: a form of "be", maybe an -ly word, then a past participle.
+- **Qualifiers, intensifiers, fillers**: word and phrase lists. "Rather than" and "what kind of"
+  don't count.
+- **Simpler words**: a phrase list (utilize → use, in order to → to), with -s, -ed, and -ing forms.
 
-The rules are for English. The checks run on visible lines first, like the live preview, and on the
-whole page after a pause for the counts.
+The longer match wins where two overlap, so "due to the fact that" is one simpler phrase, not a
+filler inside it. Passive voice may hold other marks. Each paragraph's result is kept, so an edit
+checks only the paragraph it changed: on a 20,000-word page the first check takes 16 ms, and each
+edit after it 0.4 ms.
+
+The rules are for English.
 
 ## Phases
 
@@ -160,16 +171,17 @@ Each phase ends with the tests passing and the change tried in the app.
 1. **Layout only** (done, 2026-10-26). Right panel with Review and Overflow tabs. Lab contents
    move into Review. Here keeps today's Alternatives contents. Bars and shortcuts as above. No new
    features.
-2. **Checker spike, go or no-go** (1–2 days, thrown away after). Sentence splitting and the grade on
-   a long real document. Measure a keystroke's cost in the app. Check how tints look under
-   alternatives and ghosts. If it is slow or noisy, stop and rethink before phase 3.
-3. **Live checks** (4–6 days). The module, its tests, the decorations, the Review rows, and "Why
-   it's marked".
+2. **Checker spike, go or no-go** (skipped, 2026-10-26). The real module was built test-first
+   instead, and its speed measured on a long page. See "Live checks".
+3. **Live checks** (first slice done, 2026-10-26). The module, its tests, the highlights, the
+   Review rows with counts, eyes, and jumps, and "Why it's marked" in Review. Still to do: the
+   grade in the top bar, the reason in Here, Hemingway's other weakeners (weak verbs, hidden
+   actions, negative phrases), and "More" stats.
 4. **Rewrite verbs in Here** (2–3 days). Simplify, Shorter, Polish, Tone, free text. Each result as
    a variant or a version, with undo and redo tests.
 5. **Feedback** (1–2 days). After deciding where its text goes.
 
-Phase 3 waits for phase 2. Phases 4 and 5 don't need the checker, so either can come next.
+Phases 4 and 5 don't need the checker, so either can come next.
 
 ## Risks
 
@@ -192,20 +204,28 @@ Phase 3 waits for phase 2. Phases 4 and 5 don't need the checker, so either can 
 - Review and Overflow are two tabs of one panel. Only one shows at a time.
 - Lab results stay in the bar under the page for now. Revisit in phase 3.
 - A run from Review keeps the panel open and puts the focus on the page, where the results are.
+- Live local checks come first: Hemingway's highlights are what Undertext lacks.
+- Highlights show only while Review is open. There is no separate Write and Edit switch.
+- The grade is the Automated Readability Index, as in open-source Hemingway clones. The target is
+  fixed: hard from grade 10.
+- The first slice has hard and very hard sentences, five weakeners (adverbs, passive voice,
+  qualifiers, intensifiers, fillers), and simpler words. Grammar waits: rules can't do it well.
+- Simpler words are green, not Hemingway's purple. Purple is the accent, and it belongs to
+  alternatives.
+- Ghosted text isn't checked, as it isn't counted.
+- "Why it's marked" shows in Review, under the grade, and on hover over the highlight.
 
 ## Open decisions
 
-1. **Which half of Hemingway.** Live local checks, more AI rewrites, or both. Phase 1 is useful
-   either way. Phases 2 and 3 matter only for live checks.
-2. **Edit mode.** Highlights only while Review is open, or a separate Write and Edit switch.
-3. **Which side.** macOS apps put the inspector on the right. Undertext has Alternatives on the
+1. **Which side.** macOS apps put the inspector on the right. Undertext has Alternatives on the
    left. Phase 1 kept the left, because it is learned and the right has the page tools.
-4. **Grade formula.** Automated Readability Index (letters, no syllables) or Flesch-Kincaid
-   (syllables, harder in code). Hemingway doesn't say which it uses. Also: a target setting, or a
-   fixed grade 9.
-5. **Rewrites across paragraphs.** An alternative can't span a line break. A selection across
+2. **Rewrites across paragraphs.** An alternative can't span a line break. A selection across
    paragraphs could become one version per paragraph, or be refused.
-6. **Where Feedback goes.** A section in Review, a third tab, or text added to Overflow.
-7. **"Why it's marked".** In the Here panel only, or also on hover over the highlight.
-8. **The long-sentences check.** Today it is an instant check in Review. Live "hard" and "very
-   hard" would replace it. Remove it, or keep it as a one-shot check.
+3. **Where Feedback goes.** A section in Review, a third tab, or text added to Overflow.
+4. **"Why it's marked" in Here.** It shows in Review now. Also show it in the Here panel, or not.
+5. **The long-sentences check.** Today it is an instant check in Review. Live "hard" and "very
+   hard" now cover it. Remove it, or keep it as a one-shot check.
+6. **Grammar.** Hemingway's green "writing issues". A Claude run that marks them, like the other
+   checks, or nothing.
+7. **The grade in the top bar.** The checks run only while Review is open, so the top bar can't
+   show a grade with Review closed. Run them always for the grade alone, or leave it in Review.

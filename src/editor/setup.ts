@@ -17,11 +17,13 @@ import {
   wordRangeAt,
 } from "./commands";
 import { Layers, MARKDOWN_EXTENSIONS, serializePage } from "./format";
+import { highlights, HighlightSettings, highlightReport, issueAt } from "./highlights";
 import { inkLayers } from "./ink";
 import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
 import { layers, layersField, layersOf } from "./layers";
 import { livePreview } from "./preview";
+import { Kind, KINDS } from "./readability";
 
 export interface EditorHandlers {
   alternatives(): void;
@@ -94,7 +96,12 @@ const theme = EditorView.theme({
   ".cm-cursor, .cm-dropCursor": { borderLeft: "2px solid var(--accent)", marginLeft: "-1px" },
 });
 
-export function createEditorState(text: string, initial: Layers, handlers?: () => EditorHandlers): EditorState {
+export function createEditorState(
+  text: string,
+  initial: Layers,
+  handlers?: () => EditorHandlers,
+  checks?: HighlightSettings,
+): EditorState {
   const call = (fn: keyof EditorHandlers) => () => {
     if (!handlers) return false;
     return handlers()[fn]() !== false;
@@ -111,6 +118,7 @@ export function createEditorState(text: string, initial: Layers, handlers?: () =
       markdown({ extensions: MARKDOWN_EXTENSIONS, addKeymap: false, completeHTMLTags: false }),
       layers(initial),
       lab,
+      highlights(checks),
       livePreview,
       inkLayers,
       clipboard,
@@ -169,6 +177,13 @@ export interface EditorInfo {
     /** The reason of the mark under the caret, if any. */
     here: string | null;
   } | null;
+  /** Live highlights, while Review is open. `here` says why the text at the caret is marked. */
+  checks: {
+    grade: number | null;
+    sentences: number;
+    counts: Record<Kind, number>;
+    here: string | null;
+  } | null;
 }
 
 let lastCounted: { doc: unknown; layers: unknown; counts: { words: number; chars: number } } | null = null;
@@ -212,5 +227,14 @@ export function describe(state: EditorState): EditorInfo {
       }
     : null;
 
-  return { ...lastCounted.counts, alt, candidate, para, lab: labInfo };
+  const report = highlightReport(state);
+  let checks: EditorInfo["checks"] = null;
+  if (report) {
+    const counts = Object.fromEntries(KINDS.map((k) => [k, 0])) as Record<Kind, number>;
+    for (const i of report.issues) counts[i.kind] += 1;
+    const here = issueAt(state, state.selection.main.head)?.note ?? null;
+    checks = { grade: report.grade, sentences: report.sentences, counts, here };
+  }
+
+  return { ...lastCounted.counts, alt, candidate, para, lab: labInfo, checks };
 }

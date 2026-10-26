@@ -13,4 +13,8 @@ describe("how the editor is built", () => {
   it("keeps the file format free of the editor: format.ts uses only the Markdown parser", () => {
     expect([...new Set(dependencies("src/editor/format.ts"))]).toEqual(["@lezer/markdown"]);
   });
+
+  it("keeps the readability checks free of the editor: readability.ts imports nothing", () => {
+    expect(dependencies("src/editor/readability.ts")).toEqual([]);
+  });
 });
