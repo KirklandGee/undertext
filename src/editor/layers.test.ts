@@ -2,19 +2,28 @@ import { history, redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, TransactionSpec } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import {
+  addAiAlternatives,
   addAltVariant,
   countWords,
   createAlt,
   cycleAlt,
   cycleAtCaret,
+  cycleVersion,
   deleteGhosts,
+  dropAlt,
   forkVersion,
   jumpToItem,
   removeAltVariant,
+  removeVersionVariant,
+  reviveAll,
+  reviveAt,
+  setAltActive,
   settleAll,
+  settleVersion,
   setVersionActive,
   startsWithVowelSound,
   ghostBlocked,
+  ghostRange,
   removeSpan,
   toggleGhost,
   versionedItems,
@@ -71,6 +80,23 @@ describe("alternatives", () => {
     state = apply(state, cycleAlt(state, id, 1));
     expect(state.doc.toString()).toBe("the strugglse here");
     expect(save(state)).toBe("the {{tension|>strugglse}} here\n");
+  });
+
+  it("cycles backward and forward through three variants, wrapping", () => {
+    let state = stateFor("the {{tension|>pressure|strain}} here\n");
+    const id = altIdAt(state, "pressure");
+    state = apply(state, cycleAlt(state, id, -1));
+    expect(state.doc.toString()).toBe("the tension here");
+    expect(save(state)).toBe("the {{tension|pressure|strain}} here\n");
+    state = apply(state, cycleAlt(state, id, -1));
+    expect(state.doc.toString()).toBe("the strain here");
+    expect(save(state)).toBe("the {{tension|pressure|>strain}} here\n");
+    state = apply(state, cycleAlt(state, id, -1));
+    expect(state.doc.toString()).toBe("the pressure here");
+    expect(save(state)).toBe("the {{tension|>pressure|strain}} here\n");
+    state = apply(state, cycleAlt(state, id, 1));
+    expect(state.doc.toString()).toBe("the strain here");
+    expect(save(state)).toBe("the {{tension|pressure|>strain}} here\n");
   });
 
   it("takes letters typed at its end, but not a space or text at its start", () => {
@@ -208,12 +234,112 @@ describe("undo", () => {
     expect(remove("Really", "Really")).toBe("");
   });
 
-  it("undoes a ghost toggle", () => {
+  it("undoes and redoes a ghost toggle", () => {
     let state = select(stateFor("one two three\n"), 4, 7);
     state = run(state, toggleGhost);
     expect(save(state)).toBe("one {-two-} three\n");
     state = run(state, undo);
     expect(save(state)).toBe("one two three\n");
+    state = run(state, redo);
+    expect(save(state)).toBe("one {-two-} three\n");
+  });
+
+  // cycleAlt and setVersionActive have their own undo tests. createAlt and cleanupSingleAlts
+  // are not here: they add or drop a one-variant alternative, which saves as plain text.
+  it.each<{ name: string; md: string; cmd: (state: EditorState) => TransactionSpec | null; after: string }>([
+    {
+      name: "setAltActive",
+      md: "the {{tension|pressure|strain}} here\n",
+      cmd: (s) => setAltActive(s, altIdAt(s, "tension"), 2),
+      after: "the {{tension|pressure|>strain}} here\n",
+    },
+    {
+      name: "addAltVariant",
+      md: "the {{tension|pressure}} here\n",
+      cmd: (s) => addAltVariant(s, altIdAt(s, "tension"), "strain"),
+      after: "the {{tension|pressure|>strain}} here\n",
+    },
+    {
+      name: "addAiAlternatives",
+      md: "the {{tension|pressure}} here\n",
+      cmd: (s) => addAiAlternatives(s, altIdAt(s, "tension"), ["strain"]),
+      after: "the {{tension|pressure|~strain}} here\n",
+    },
+    {
+      name: "removeAltVariant",
+      md: "the {{tension|>pressure|strain}} here\n",
+      cmd: (s) => removeAltVariant(s, altIdAt(s, "pressure"), 1),
+      after: "the {{tension|strain}} here\n",
+    },
+    {
+      name: "dropAlt",
+      md: "the {{tension|>pressure}} here\n",
+      cmd: (s) => dropAlt(s, altIdAt(s, "pressure")),
+      after: "the pressure here\n",
+    },
+    {
+      name: "cycleVersion",
+      md: ":::alt*\nOne.\n:::or\nTwo.\n:::\n",
+      cmd: (s) => cycleVersion(s, 0, 1),
+      after: ":::alt\nOne.\n:::or*\nTwo.\n:::\n",
+    },
+    {
+      name: "forkVersion",
+      md: "Original paragraph.\n",
+      cmd: (s) => forkVersion(s, 0),
+      after: ":::alt\nOriginal paragraph.\n:::or*\nOriginal paragraph.\n:::\n",
+    },
+    {
+      name: "removeVersionVariant",
+      md: ":::alt\nOne.\n:::or*\nTwo.\n:::or\nThree.\n:::\n",
+      cmd: (s) => removeVersionVariant(s, 0, 1),
+      after: ":::alt*\nOne.\n:::or\nThree.\n:::\n",
+    },
+    {
+      name: "settleVersion",
+      md: ":::alt\nOne.\n:::or*\nTwo.\n:::\n",
+      cmd: (s) => settleVersion(s, 0),
+      after: "Two.\n",
+    },
+    {
+      name: "settleAll",
+      md: "A {{one|>uno}} word. {-gone-}\n\n:::alt\nFirst.\n:::or*\nSecond.\n:::\n",
+      cmd: (s) => settleAll(s),
+      after: "A uno word. {-gone-}\n\nSecond.\n",
+    },
+    {
+      name: "ghostRange",
+      md: "one two three\n",
+      cmd: (s) => ghostRange(s, at(s, "two"), at(s, "two") + 3),
+      after: "one {-two-} three\n",
+    },
+    {
+      name: "reviveAt",
+      md: "one {-two-} three\n",
+      cmd: (s) => reviveAt(s, at(s, "two")),
+      after: "one two three\n",
+    },
+    {
+      name: "reviveAll",
+      md: "one {-two-} three {-four-}\n",
+      cmd: (s) => reviveAll(s),
+      after: "one two three four\n",
+    },
+    {
+      name: "deleteGhosts",
+      md: "Keep this. {-Maybe cut.-} Keep that.\n",
+      cmd: (s) => deleteGhosts(s),
+      after: "Keep this. Keep that.\n",
+    },
+  ])("undoes and redoes $name", ({ md, cmd, after }) => {
+    let state = stateFor(md);
+    expect(save(state)).toBe(md);
+    state = apply(state, cmd(state));
+    expect(save(state)).toBe(after);
+    state = run(state, undo);
+    expect(save(state)).toBe(md);
+    state = run(state, redo);
+    expect(save(state)).toBe(after);
   });
 
   it("undoes typing far from any layer without touching the layers", () => {
@@ -257,6 +383,22 @@ describe("paragraph versions", () => {
     expect(layersOf(state).versions).toHaveLength(1);
     expect(save(state)).toBe("Above.\n\n:::alt*\nA.\n:::or\nB.\n:::\n");
   });
+
+  it("cycles backward and forward through three versions, wrapping", () => {
+    let state = stateFor(":::alt\nOne.\n:::or*\nTwo.\n:::or\nThree.\n:::\n");
+    state = apply(state, cycleVersion(state, 0, -1));
+    expect(state.doc.toString()).toBe("One.");
+    expect(save(state)).toBe(":::alt*\nOne.\n:::or\nTwo.\n:::or\nThree.\n:::\n");
+    state = apply(state, cycleVersion(state, 0, -1));
+    expect(state.doc.toString()).toBe("Three.");
+    expect(save(state)).toBe(":::alt\nOne.\n:::or\nTwo.\n:::or*\nThree.\n:::\n");
+    state = apply(state, cycleVersion(state, 0, -1));
+    expect(state.doc.toString()).toBe("Two.");
+    expect(save(state)).toBe(":::alt\nOne.\n:::or*\nTwo.\n:::or\nThree.\n:::\n");
+    state = apply(state, cycleVersion(state, 0, 1));
+    expect(state.doc.toString()).toBe("Three.");
+    expect(save(state)).toBe(":::alt\nOne.\n:::or\nTwo.\n:::or*\nThree.\n:::\n");
+  });
 });
 
 describe("keyboard navigation", () => {
@@ -290,6 +432,24 @@ describe("keyboard navigation", () => {
     expect(state.doc.line(1).text).toBe("Start uno here.");
     state = select(state, at(state, "Plain") + 1);
     expect(cycleAtCaret(state, 1)).toBeNull();
+  });
+
+  it("cycles both ways at the caret: the word first, and else its paragraph", () => {
+    let state = stateFor(":::alt\nFirst.\n:::or*\nSecond {{one|>uno|eins}} here.\n:::or\nThird.\n:::\n");
+    state = select(state, at(state, "uno") + 1);
+    state = apply(state, cycleAtCaret(state, -1));
+    expect(state.doc.toString()).toBe("Second one here.");
+    state = apply(state, cycleAtCaret(state, -1));
+    expect(state.doc.toString()).toBe("Second eins here.");
+    state = apply(state, cycleAtCaret(state, 1));
+    expect(state.doc.toString()).toBe("Second one here.");
+    state = select(state, at(state, "Second") + 1);
+    state = apply(state, cycleAtCaret(state, -1));
+    expect(state.doc.toString()).toBe("First.");
+    expect(save(state)).toBe(":::alt*\nFirst.\n:::or\nSecond {{one|uno|eins}} here.\n:::or\nThird.\n:::\n");
+    state = apply(state, cycleAtCaret(state, 1));
+    expect(state.doc.toString()).toBe("Second one here.");
+    expect(save(state)).toBe(":::alt\nFirst.\n:::or*\nSecond {{one|uno|eins}} here.\n:::or\nThird.\n:::\n");
   });
 });
 
