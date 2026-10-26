@@ -206,17 +206,34 @@ Total: about 3–4 weeks of focused work.
 
 ## Next
 
-As of 2026-10-25, everything above is on `main` and pushed. So are three follow-ups: a save guard
-against changes made in other apps, letters joining an alternative, and heading and list keys.
+As of 2026-10-26, everything above is on `main` and pushed. So are these follow-ups:
 
-1. Test the save guard in the macOS app. It is the only change not tried in the app.
-   - Open a copy of a document. Change it in another editor. Switch back with no edits here: it
-     should reload.
-   - Change it in the other editor again, then type here and wait for autosave: it should ask
-     "Load theirs" or "Keep mine".
-2. Put off on purpose, until there is a reason:
+- A save guard against changes made in other apps, letters joining an alternative, and heading
+  and list keys.
+- The checks for working with coding agents: `pnpm verify`, CI, the end-of-turn gate, skills, and
+  review checks. See `docs/agents.md`.
+- Enter in a list no longer leaves a stray space in the new item.
+- Tests that passed with their feature broken now fail when it breaks.
+
+1. Try two changes in the macOS app. Neither has been tried there yet.
+   - The save guard. Open a copy of a document. Change it in another editor. Switch back with no
+     edits here: it should reload. Change it in the other editor again, then type here and wait
+     for autosave: it should ask "Load theirs" or "Keep mine".
+   - Enter in a list. With the caret after "one" in `1. one two`, Enter should give `2. two`, with
+     no space before "two". The fix was tried only in the browser preview.
+2. Decide how Enter renumbers a numbered list. Today it follows CommonMark: `  1. a` then
+   `  2. b` then `3. c` renumbers `3. c` to `4. c`, and so does a list with a plain line
+   between items. The old editor stopped at the indent change and at the plain line. These two
+   cases have no tests until this is decided.
+3. Tests still to write:
+   - Undo and redo for each layer command. A draft covers 13 commands. `createAlt` and
+     `cleanupSingleAlts` each leave an undo step that changes nothing on the page; decide whether
+     that is a bug.
+   - The decorations in `src/editor/preview.ts` and `src/editor/ink.ts`, and a copy and paste
+     round trip in `src/editor/clipboard.ts`.
+4. A script that installs the app: build, quit Undertext, and replace the bundle in
+   `/Applications`.
+5. Put off on purpose, until there is a reason:
    - Render tables and images. They show as Markdown source today.
    - Rename `:::alt`, if files ever go through Pandoc or Docusaurus.
    - Keep a ghost that covers only part of an alternative. Today that part is lost on save.
-3. Housekeeping: delete the local `codemirror` branch (merged), and decide whether to commit
-   `.claude/launch.json` (the browser preview config).
