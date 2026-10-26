@@ -2,7 +2,7 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import { applyFixes, longSentences, narrowChange } from "../ai/tasks";
 import { matchScore, rank } from "../palette/match";
-import { buildCommands, PaletteContext } from "../palette/commands";
+import { buildCommands, GROUPS, PaletteCommand, PaletteContext } from "../palette/commands";
 import { parsePage } from "./format";
 import { ghostLabSpans, labSpans, makeCuts, setLab } from "./lab";
 import { layersOf } from "./layers";
@@ -83,40 +83,44 @@ describe("command palette", () => {
     expect(rank(items, "file")[0].title).toBe("New document");
   });
 
+  const noop = () => {};
+  const ctx = (s: EditorState, panels: Partial<PaletteContext> = {}, actions: Partial<PaletteContext["actions"]> = {}): PaletteContext => ({
+    view: { state: s, dispatch: noop as never },
+    info: describeEditor(s),
+    layers: true,
+    overflowOpen: false,
+    reviewOpen: false,
+    altOpen: false,
+    ...panels,
+    actions: {
+      save: noop,
+      open: noop,
+      newDoc: noop,
+      welcome: noop,
+      toggleLayers: noop,
+      setOverflowOpen: noop,
+      setReviewOpen: noop,
+      openAlternatives: noop,
+      closeAlternatives: noop,
+      stash: noop,
+      fork: noop,
+      aiAlternatives: noop,
+      fixTypos: noop,
+      check: noop,
+      trim: noop,
+      walkLab: noop,
+      makeCuts: noop,
+      ghostLab: noop,
+      clearLab: noop,
+      setKey: noop,
+      connectSubscription: noop,
+      ...actions,
+    },
+  });
+
   it("offers commands for what is under the caret", () => {
     let state = stateFor("the {{tension|pressure}} here\n\n:::alt\nOne.\n:::or*\nTwo.\n:::\n");
     state = state.update({ selection: EditorSelection.cursor(at(state, "tension") + 2) }).state;
-    const noop = () => {};
-    const ctx = (s: EditorState): PaletteContext => ({
-      view: { state: s, dispatch: noop as never },
-      info: describeEditor(s),
-      layers: true,
-      overflowOpen: false,
-      altOpen: false,
-      actions: {
-        save: noop,
-        open: noop,
-        newDoc: noop,
-        welcome: noop,
-        toggleLayers: noop,
-        setOverflowOpen: noop,
-        openAlternatives: noop,
-        closeAlternatives: noop,
-        stash: noop,
-        fork: noop,
-        aiAlternatives: noop,
-        openLab: noop,
-        fixTypos: noop,
-        check: noop,
-        trim: noop,
-        walkLab: noop,
-        makeCuts: noop,
-        ghostLab: noop,
-        clearLab: noop,
-        setKey: noop,
-        connectSubscription: noop,
-      },
-    });
     const titles = buildCommands(ctx(state)).map((c) => c.title);
     expect(titles).toContain("Use “pressure”");
     expect(titles).toContain("Keep “tension”, drop the other alternatives");
@@ -125,5 +129,28 @@ describe("command palette", () => {
 
     state = state.update({ selection: EditorSelection.cursor(at(state, "Two")) }).state;
     expect(buildCommands(ctx(state)).map((c) => c.title)).toContain("Switch to version 1: “One.”");
+  });
+
+  it("lists the checks under Review, and opens or closes it", () => {
+    const state = stateFor("One sentence here.\n");
+    const asked: boolean[] = [];
+    const find = (commands: PaletteCommand[], id: string) => commands.find((c) => c.id === id)!;
+
+    const closed = buildCommands(ctx(state, {}, { setReviewOpen: (open) => asked.push(open) }));
+    expect(find(closed, "lab.open")).toMatchObject({ group: "Review", title: "Open Review", shortcut: "⌘⇧E" });
+    expect(find(closed, "lab.typos").group).toBe("Review");
+    expect(find(closed, "lab.trim.half").group).toBe("Review");
+    expect(find(closed, "overflow.toggle").title).toBe("Open Overflow");
+    find(closed, "lab.open").run();
+    expect(asked).toEqual([true]);
+
+    const open = buildCommands(ctx(state, { reviewOpen: true }, { setReviewOpen: (open) => asked.push(open) }));
+    expect(find(open, "lab.open").title).toBe("Close Review");
+    expect(find(open, "overflow.toggle").title).toBe("Open Overflow");
+    find(open, "lab.open").run();
+    expect(asked).toEqual([true, false]);
+
+    expect(GROUPS).toContain("Review");
+    expect(GROUPS).not.toContain("Lab");
   });
 });

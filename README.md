@@ -12,7 +12,7 @@
 <p align="center">
   <a href="#build-and-run">Build and run</a> ·
   <a href="#shortcuts">Shortcuts</a> ·
-  <a href="#ai-and-the-lab">AI and the Lab</a> ·
+  <a href="#ai-and-review">AI and Review</a> ·
   <a href="https://github.com/klipstack/undertext/issues">Issues</a>
 </p>
 
@@ -34,8 +34,9 @@ other ways you might say them.
   press ⌥J and ⌥K, to read each one in place.
 - **Paragraph versions.** Fork a paragraph, rewrite it in place, and switch between the versions.
 - **Ghost.** Dim text you might cut. It stays readable but easy to ignore.
-- **Overflow.** A side panel for leftovers you might use later.
-- **The Lab.** Optional AI help that marks, fixes, and trims, but never rewrites your text on its own.
+- **Review.** A side panel with optional AI help that marks, fixes, and trims, but never rewrites
+  your text on its own.
+- **Overflow.** A tab beside Review for leftovers you might use later.
 - **Keyboard first.** Every action has a shortcut, and ⌘K lists them all.
 
 ## Status
@@ -66,16 +67,16 @@ storage, and answers AI requests with fake results so you can try the UI.
 | ⌘K | Command palette: every action available right now, with its shortcut |
 | ⌘⇧A | Alternatives for the word at the cursor or the selection |
 | ⌘⇧G | Ask Claude for alternatives |
-| ⌘⇧E | The Lab: typo fixes, checks that mark text, and trims |
+| ⌘⇧E | Review: typo fixes, checks that mark text, and trims. Press again in Review to close it. Esc goes back to the page. |
 | ⌥J ⌥K | Next / previous version at the cursor (word or sentence, else paragraph) |
 | ⌥⇧J ⌥⇧K | Next / previous version of the paragraph |
-| ⌥L ⌥H | Jump to the next / previous item that has versions (or Lab result) |
+| ⌥L ⌥H | Jump to the next / previous item that has versions (or a Review mark or cut) |
 | hover + ↑ ↓ | Cycle the hovered word, sentence, or paragraph |
 | ⌘⇧D | New version of the current paragraph |
 | ⌘/ | Ghost the selection, or revive the ghost at the cursor |
 | ⌘⇧X | Stash the selection in Overflow |
-| ⌘⇧O | Open Overflow and type in it. Press again to close it. Esc goes back to the page. |
-| ⌘⇧L | Show or hide the layers (same as clicking the word count) |
+| ⌘⇧O | Open Overflow and type in it. Press again in Overflow to close it. Esc goes back to the page. |
+| ⌘⇧L | Show or hide the layers |
 | ⌘B ⌘I ⌘E | Bold, italic, inline code. On a selection, a word, or formatted text (removes it) |
 | ⌘⇧K | Link: wraps the selection as `[text]()`. Pasting a URL over a selection also makes a link. |
 | ⌥⌘1 ⌥⌘2 ⌥⌘3 ⌥⌘0 | Heading 1, 2, 3, or back to plain text. The same heading again removes it. |
@@ -120,7 +121,7 @@ Leftovers live after the marker.
 - `{{calls|~judgments}}`: `~` marks a suggestion that came from AI.
 - `{-text-}`: ghosted text. Other Markdown tools show the braces as plain text.
 - `:::alt` … `:::or` … `:::`: paragraph versions. `*` marks the active one.
-- `<!-- overflow -->`: everything after this line is the Overflow panel.
+- `<!-- overflow -->`: everything after this line is the Overflow tab.
 - Everything else is plain Markdown and stays exactly as you wrote it, so `~~text~~` is ordinary
   strikethrough. The additions are not read inside code.
 - A save adds a backslash only where your text would read as an addition: before `{{` and `{-`, and
@@ -128,7 +129,9 @@ Leftovers live after the marker.
 
 Older files wrote ghosts as `~~text~~`. Those now open as strikethrough.
 
-## AI and the Lab
+## AI and Review
+
+Review is the first tab of the right panel. Press ⌘⇧E, or click the word count.
 
 The AI features are optional. They never rewrite your text on their own: every result is something
 you can see and undo.
@@ -147,7 +150,7 @@ use an AI feature.
 **Setup.** Press ⌘K, choose "Set the Anthropic API key…", and paste a key from
 [platform.claude.com](https://platform.claude.com). The key is stored in the macOS Keychain, and
 requests go out from the app's Rust side, so the key never reaches the web page. During development,
-`ANTHROPIC_API_KEY` works too. Requests use `claude-opus-5-5`; a Lab run on a 1,000-word piece costs a
+`ANTHROPIC_API_KEY` works too. Requests use `claude-opus-5-5`; a check on a 1,000-word piece costs a
 few cents.
 
 **Or use your Claude subscription.** With no API key set, requests can go through

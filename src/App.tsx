@@ -19,9 +19,10 @@ import { CommandPalette } from "./components/CommandPalette";
 import { KeyDialog } from "./components/KeyDialog";
 import { SubscriptionDialog } from "./components/SubscriptionDialog";
 import { LabBar } from "./components/LabBar";
-import { LabMenu } from "./components/LabMenu";
 import { ContextMenu, MenuItem, MenuState } from "./components/ContextMenu";
 import { Icon } from "./components/Icon";
+import { clickPanel, pressPanelKey, RightTab, savedPanel } from "./components/panels";
+import { RightPanel } from "./components/RightPanel";
 import {
   addAiAlternatives,
   addAltVariant,
@@ -96,7 +97,7 @@ export default function App() {
   const mountRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const overflowInputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const overflowRef = useRef("");
   const savedRef = useRef("");
   /** What the file on disk held when the page last read or wrote it. Null when unknown or unsaved. */
@@ -107,7 +108,7 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const paletteReturnRef = useRef<Element | null>(null);
 
-  const [prefs] = useState(() => readJSON<{ layers?: boolean; overflowOpen?: boolean }>(PREFS_KEY) ?? {});
+  const [prefs] = useState(() => readJSON<{ layers?: boolean; panel?: unknown; overflowOpen?: boolean }>(PREFS_KEY) ?? {});
   const [info, setInfo] = useState<EditorInfo | null>(null);
   const [overflow, setOverflowState] = useState("");
   const [file, setFileState] = useState<FileRef>(fileRef.current);
@@ -115,17 +116,16 @@ export default function App() {
   const [changeTick, setChangeTick] = useState(0);
   const [layers, setLayers] = useState(prefs.layers ?? true);
   const [altOpen, setAltOpen] = useState(false);
-  const [overflowOpen, setOverflowOpen] = useState(prefs.overflowOpen ?? false);
+  const [panel, setPanel] = useState<RightTab | null>(() => savedPanel(prefs));
   const [tab, setTab] = useState<AltTab>("inline");
   const [focusKey, setFocusKey] = useState(0);
-  const [overflowFocusKey, setOverflowFocusKey] = useState(0);
+  const [panelFocusKey, setPanelFocusKey] = useState(0);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => readJSON<string[]>(RECENT_KEY) ?? []);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const aiRunRef = useRef(0);
-  const [labOpen, setLabOpen] = useState(false);
   const [keyDialog, setKeyDialog] = useState<{ message?: string; hasKey: boolean } | null>(null);
   const [subscriptionDialog, setSubscriptionDialog] = useState<{ message?: string; hasKey: boolean } | null>(null);
 
@@ -360,17 +360,12 @@ export default function App() {
     });
   };
 
-  const closeLab = () => {
-    setLabOpen(false);
-    view().focus();
-  };
-
   const fixTypos = () =>
     void runAi("Checking typos and punctuation", async (live) => {
       const fixes = await findFixes(view().state);
       if (!live()) return;
       const { spec, count } = applyFixes(view().state, fixes);
-      closeLab();
+      view().focus();
       if (!count) {
         flash("No typos found");
         return;
@@ -384,7 +379,7 @@ export default function App() {
     void runAi(c.title, async (live) => {
       const spans = await runCheck(view().state, id);
       if (!live()) return;
-      closeLab();
+      view().focus();
       if (!spans.length) {
         dispatch(clearLab());
         flash(`${c.label}: nothing to mark`);
@@ -399,7 +394,7 @@ export default function App() {
     void runAi(`${t.label}: choosing cuts`, async (live) => {
       const spans = await proposeTrim(view().state, t.percent);
       if (!live()) return;
-      closeLab();
+      view().focus();
       if (!spans.length) {
         flash("Nothing to cut");
         return;
@@ -427,7 +422,7 @@ export default function App() {
     dispatch(taken.spec);
     const text = taken.text.trim();
     setOverflow((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text));
-    setOverflowOpen(true);
+    setPanel("overflow");
   };
 
   const toggleLayers = () => {
@@ -435,23 +430,18 @@ export default function App() {
     flash(layers ? "Layers hidden. ⌘⇧L shows them." : "Layers shown");
   };
 
-  /** ⌘⇧O: open Overflow and type in it. Pressed again from Overflow, close it and go back to the page. */
-  const toggleOverflow = () => {
-    if (!overflowOpen) {
-      setOverflowOpen(true);
-      setOverflowFocusKey((k) => k + 1);
-    } else if (document.activeElement === overflowInputRef.current) {
-      setOverflowOpen(false);
-      view().focus();
-    } else {
-      overflowInputRef.current?.focus();
-    }
+  /** Shows a tab of the right panel, and with `focus` moves the focus into it. Null closes the panel and goes back to the page. */
+  const showPanel = (next: RightTab | null, focus = false) => {
+    setPanel(next);
+    if (!next) view().focus();
+    else if (focus) setPanelFocusKey((k) => k + 1);
   };
 
-  const showOverflow = (open: boolean) => {
-    setOverflowOpen(open);
-    if (open) setOverflowFocusKey((k) => k + 1);
-    else view().focus();
+  /** ⌘⇧E and ⌘⇧O: show that tab and focus it. Pressed again from inside it, close the panel. */
+  const pressPanel = (key: RightTab) => {
+    const inside = panel && panelRef.current?.contains(document.activeElement) ? panel : null;
+    const next = pressPanelKey(key, inside);
+    showPanel(next.panel, next.focus === "panel");
   };
 
   // -------------------------------------------------------------------------
@@ -501,7 +491,7 @@ export default function App() {
   handlersRef.current = {
     alternatives: openAlternatives,
     aiAlternatives,
-    lab: () => setLabOpen((o) => !o),
+    lab: () => pressPanel("review"),
     stash,
     fork,
     escape: () => {
@@ -662,11 +652,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeTick]);
 
-  useEffect(() => writeJSON(PREFS_KEY, { layers, overflowOpen }), [layers, overflowOpen]);
+  useEffect(() => writeJSON(PREFS_KEY, { layers, panel }), [layers, panel]);
 
   useEffect(() => {
-    if (overflowFocusKey) overflowInputRef.current?.focus();
-  }, [overflowFocusKey]);
+    if (panelFocusKey) panelRef.current?.querySelector<HTMLElement>("[data-focus]")?.focus();
+  }, [panelFocusKey]);
 
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keysRef.current = (e: KeyboardEvent) => {
@@ -677,7 +667,7 @@ export default function App() {
       void doSave(e.shiftKey);
     } else if (key === "o" && e.shiftKey) {
       e.preventDefault();
-      toggleOverflow();
+      pressPanel("overflow");
     } else if (key === "l" && e.shiftKey) {
       e.preventDefault();
       toggleLayers();
@@ -689,8 +679,7 @@ export default function App() {
       void doNew();
     } else if (key === "e" && e.shiftKey) {
       e.preventDefault();
-      if (labOpen) closeLab();
-      else setLabOpen(true);
+      pressPanel("review");
     } else if (key === "k" && !e.shiftKey) {
       e.preventDefault();
       if (paletteOpen) closePalette();
@@ -721,9 +710,9 @@ export default function App() {
       <header className="topbar" data-tauri-drag-region>
         <button
           className="quiet count"
-          onClick={toggleLayers}
-          title={layers ? "Hide the layers (⌘⇧L)" : "Show the layers (⌘⇧L)"}
-          aria-pressed={layers}
+          onClick={() => showPanel(clickPanel(panel, "review"))}
+          title="Review (⌘⇧E)"
+          aria-pressed={panel === "review"}
         >
           {words} {words === 1 ? "word" : "words"}
           <span className="chars"> · {info?.chars ?? 0} chars</span>
@@ -779,52 +768,25 @@ export default function App() {
           )}
         </main>
 
-        {overflowOpen && (
-          <aside className="side side-right" aria-label="Overflow">
-            <header className="side-title">Overflow</header>
-            <textarea
-              ref={overflowInputRef}
-              className="overflow"
-              value={overflow}
-              onChange={(e) => setOverflow(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  view().focus();
-                }
-              }}
-              placeholder="Extra writing, notes, leftovers…"
-              spellCheck
-            />
-            <footer className="side-hint">⌘⇧X stashes selection · esc back to the page · ⌘⇧O closes</footer>
-          </aside>
+        {panel && (
+          <RightPanel
+            tab={panel}
+            panelRef={panelRef}
+            overflow={overflow}
+            busy={aiBusy}
+            onTab={(next) => showPanel(next, true)}
+            onOverflow={setOverflow}
+            onFix={fixTypos}
+            onCheck={check}
+            onTrim={trim}
+            onCancel={cancelAi}
+            onPage={() => view().focus()}
+          />
         )}
       </div>
 
       <footer className="bottombar">
         <div className="group">
-          <button className="icon" onClick={() => void doOpen()} title="Open (⌘O)">
-            <Icon name="open" />
-          </button>
-          <button className="icon" onClick={() => void doSave(false)} title="Save (⌘S)">
-            <Icon name="save" />
-          </button>
-        </div>
-        <div className="toast" aria-live="polite">
-          {toast ?? (aiBusy && !labOpen ? `${aiBusy}… (esc cancels)` : null)}
-        </div>
-        <div className="group">
-          <button
-            className={`icon wide${labOpen ? " on" : ""}`}
-            onClick={() => (labOpen ? closeLab() : setLabOpen(true))}
-            title="The Lab (⌘⇧E)"
-            aria-pressed={labOpen}
-          >
-            Lab
-          </button>
-          <button className="icon wide" onClick={openPalette} title="All commands (⌘K)">
-            ⌘K
-          </button>
           <button
             className={`icon${altOpen ? " on" : ""}`}
             onClick={() => (altOpen ? closeAlternatives() : openAlternatives())}
@@ -833,11 +795,33 @@ export default function App() {
           >
             <Icon name="alts" />
           </button>
+          <button className="icon" onClick={() => void doOpen()} title="Open (⌘O)">
+            <Icon name="open" />
+          </button>
+          <button className="icon" onClick={() => void doSave(false)} title="Save (⌘S)">
+            <Icon name="save" />
+          </button>
+        </div>
+        <div className="toast" aria-live="polite">
+          {toast ?? (aiBusy && panel !== "review" ? `${aiBusy}… (esc cancels)` : null)}
+        </div>
+        <div className="group">
+          <button className="icon wide" onClick={openPalette} title="All commands (⌘K)">
+            ⌘K
+          </button>
           <button
-            className={`icon${overflowOpen ? " on" : ""}`}
-            onClick={() => setOverflowOpen((o) => !o)}
+            className={`icon wide${panel === "review" ? " on" : ""}`}
+            onClick={() => showPanel(clickPanel(panel, "review"))}
+            title="Review (⌘⇧E)"
+            aria-pressed={panel === "review"}
+          >
+            Review
+          </button>
+          <button
+            className={`icon${panel === "overflow" ? " on" : ""}`}
+            onClick={() => showPanel(clickPanel(panel, "overflow"))}
             title="Overflow (⌘⇧O)"
-            aria-pressed={overflowOpen}
+            aria-pressed={panel === "overflow"}
           >
             <Icon name="overflow" />
           </button>
@@ -845,10 +829,6 @@ export default function App() {
       </footer>
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
-
-      {labOpen && (
-        <LabMenu busy={aiBusy} onFix={fixTypos} onCheck={check} onTrim={trim} onCancel={cancelAi} onClose={closeLab} />
-      )}
 
       {keyDialog && (
         <KeyDialog
@@ -904,7 +884,8 @@ export default function App() {
             view: view(),
             info,
             layers,
-            overflowOpen,
+            overflowOpen: panel === "overflow",
+            reviewOpen: panel === "review",
             altOpen,
             actions: {
               save: (saveAs) => void doSave(saveAs),
@@ -912,13 +893,13 @@ export default function App() {
               newDoc: () => void doNew(),
               welcome: () => void openWelcome(),
               toggleLayers,
-              setOverflowOpen: showOverflow,
+              setOverflowOpen: (open) => showPanel(open ? "overflow" : null, true),
+              setReviewOpen: (open) => showPanel(open ? "review" : null, true),
               openAlternatives,
               closeAlternatives,
               stash,
               fork,
               aiAlternatives,
-              openLab: () => setLabOpen(true),
               fixTypos,
               check,
               trim,

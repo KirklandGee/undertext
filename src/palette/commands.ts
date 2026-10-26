@@ -39,6 +39,7 @@ export interface PaletteContext {
   info: EditorInfo;
   layers: boolean;
   overflowOpen: boolean;
+  reviewOpen: boolean;
   altOpen: boolean;
   actions: {
     save(saveAs: boolean): void;
@@ -47,12 +48,12 @@ export interface PaletteContext {
     welcome(): void;
     toggleLayers(): void;
     setOverflowOpen(open: boolean): void;
+    setReviewOpen(open: boolean): void;
     openAlternatives(): void;
     closeAlternatives(): void;
     stash(): void;
     fork(): void;
     aiAlternatives(): void;
-    openLab(): void;
     fixTypos(): void;
     check(id: CheckId): void;
     trim(id: TrimId): void;
@@ -66,7 +67,7 @@ export interface PaletteContext {
 }
 
 /** Group order when the query is empty. The most contextual groups come first. */
-export const GROUPS = ["Alternatives", "Lab", "Paragraph", "Ghost", "Overflow", "Go to", "Format", "View", "Document", "Edit", "Settings"];
+export const GROUPS = ["Alternatives", "Review", "Paragraph", "Ghost", "Overflow", "Go to", "Format", "View", "Document", "Edit", "Settings"];
 
 const quote = (text: string, max = 36) => `“${text.length > max ? `${text.slice(0, max - 1)}…` : text}”`;
 
@@ -133,26 +134,33 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     });
   }
 
-  // The Lab: results first, then the tools
+  // Review: results first, then the tools
   if (info.lab?.kind === "cuts") {
-    add({ id: "lab.walk", group: "Lab", title: "Next proposed cut", shortcut: "⌥L", keywords: "trim walk through review", run: actions.walkLab });
-    add({ id: "lab.cut", group: "Lab", title: "Make the cuts", keywords: "trim delete apply", run: actions.makeCuts });
-    add({ id: "lab.ghostCuts", group: "Lab", title: "Keep the proposed cuts as ghosts", keywords: "trim dim later", run: actions.ghostLab });
-    add({ id: "lab.discard", group: "Lab", title: "Discard the trim (back to the original)", keywords: "cancel undo original", run: actions.clearLab });
+    add({ id: "lab.walk", group: "Review", title: "Next proposed cut", shortcut: "⌥L", keywords: "trim walk through review", run: actions.walkLab });
+    add({ id: "lab.cut", group: "Review", title: "Make the cuts", keywords: "trim delete apply", run: actions.makeCuts });
+    add({ id: "lab.ghostCuts", group: "Review", title: "Keep the proposed cuts as ghosts", keywords: "trim dim later", run: actions.ghostLab });
+    add({ id: "lab.discard", group: "Review", title: "Discard the trim (back to the original)", keywords: "cancel undo original", run: actions.clearLab });
   } else if (info.lab?.kind === "marks") {
-    add({ id: "lab.next", group: "Lab", title: "Next mark", shortcut: "⌥L", keywords: "review walk", run: actions.walkLab });
-    add({ id: "lab.ghostMarks", group: "Lab", title: "Ghost the marked text", keywords: "dim cut", run: actions.ghostLab });
-    add({ id: "lab.clear", group: "Lab", title: "Clear the marks", shortcut: "esc", keywords: "remove hide", run: actions.clearLab });
+    add({ id: "lab.next", group: "Review", title: "Next mark", shortcut: "⌥L", keywords: "review walk", run: actions.walkLab });
+    add({ id: "lab.ghostMarks", group: "Review", title: "Ghost the marked text", keywords: "dim cut", run: actions.ghostLab });
+    add({ id: "lab.clear", group: "Review", title: "Clear the marks", shortcut: "esc", keywords: "remove hide", run: actions.clearLab });
   }
-  add({ id: "lab.open", group: "Lab", title: "Open the Lab", shortcut: "⌘⇧E", keywords: "ai claude tools checks", run: actions.openLab });
-  add({ id: "lab.typos", group: "Lab", title: "Fix punctuation and typos", keywords: "ai spelling proofread grammar", run: actions.fixTypos });
+  add({
+    id: "lab.open",
+    group: "Review",
+    title: ctx.reviewOpen ? "Close Review" : "Open Review",
+    shortcut: "⌘⇧E",
+    keywords: "lab ai claude tools checks trims sidebar panel",
+    run: () => actions.setReviewOpen(!ctx.reviewOpen),
+  });
+  add({ id: "lab.typos", group: "Review", title: "Fix punctuation and typos", keywords: "ai spelling proofread grammar", run: actions.fixTypos });
   for (const c of CHECKS) {
-    add({ id: `lab.check.${c.id}`, group: "Lab", title: c.title, keywords: c.ai ? "ai check review" : "check review", run: () => actions.check(c.id) });
+    add({ id: `lab.check.${c.id}`, group: "Review", title: c.title, keywords: c.ai ? "ai check review" : "check review", run: () => actions.check(c.id) });
   }
   for (const t of TRIMS) {
     add({
       id: `lab.trim.${t.id}`,
-      group: "Lab",
+      group: "Review",
       title: `${t.label} (cut about ${t.percent}%)`,
       keywords: "ai trim shorten tighten cut",
       run: () => actions.trim(t.id),

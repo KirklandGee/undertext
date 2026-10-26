@@ -1,6 +1,6 @@
 # Plan: side panels with one job each, and room for Hemingway's checks
 
-Status: proposal, 2026-10-26. Nothing is built. See "Open decisions" at the end.
+Status: phase 1 built, 2026-10-26. See "Decisions taken" and "Open decisions" at the end.
 
 ## Goals
 
@@ -88,8 +88,10 @@ Today's Alternatives panel, grown. Same shortcut, ⌘⇧A.
 
 ## Right panel: Review and Overflow
 
-One panel, two tabs. ⌘⇧E opens Review, and pressed again closes it, as it does the Lab today. ⌘⇧O
-opens Overflow and keeps today's behavior: open and focus, then close from inside.
+One panel, two tabs. ⌘⇧E and ⌘⇧O work the same way. From the page or the other tab, each shows
+its tab and focuses it. Pressed inside its own tab, it closes the panel. Esc goes back to the page
+and leaves the panel open. A click on a tab's button shows the tab, or closes the panel when that
+tab already shows.
 
 **Review**, top to bottom:
 
@@ -155,8 +157,9 @@ whole page after a pause for the counts.
 
 Each phase ends with the tests passing and the change tried in the app.
 
-1. **Layout only** (1–2 days). Right panel with Review and Overflow tabs. Lab contents move into
-   Review. Here keeps today's Alternatives contents. Bars and shortcuts as above. No new features.
+1. **Layout only** (done, 2026-10-26). Right panel with Review and Overflow tabs. Lab contents
+   move into Review. Here keeps today's Alternatives contents. Bars and shortcuts as above. No new
+   features.
 2. **Checker spike, go or no-go** (1–2 days, thrown away after). Sentence splitting and the grade on
    a long real document. Measure a keystroke's cost in the app. Check how tints look under
    alternatives and ghosts. If it is slow or noisy, stop and rethink before phase 3.
@@ -166,7 +169,7 @@ Each phase ends with the tests passing and the change tried in the app.
    a variant or a version, with undo and redo tests.
 5. **Feedback** (1–2 days). After deciding where its text goes.
 
-Phase 1 stands on its own. Phases 3 to 5 wait for phase 2.
+Phase 3 waits for phase 2. Phases 4 and 5 don't need the checker, so either can come next.
 
 ## Risks
 
@@ -180,23 +183,29 @@ Phase 1 stands on its own. Phases 3 to 5 wait for phase 2.
   show it, not push it.
 - **English only.** Writing in another language gets wrong highlights.
 
+## Decisions taken
+
+- The tab is called Review. "The Lab" is gone from the UI, the README, and the palette. Code names
+  such as `src/editor/lab.ts` stay.
+- ⌘⇧E works like ⌘⇧O: it shows and focuses its tab, and closes the panel from inside it. Esc goes
+  back to the page and leaves the panel open.
+- Review and Overflow are two tabs of one panel. Only one shows at a time.
+- Lab results stay in the bar under the page for now. Revisit in phase 3.
+- A run from Review keeps the panel open and puts the focus on the page, where the results are.
+
 ## Open decisions
 
 1. **Which half of Hemingway.** Live local checks, more AI rewrites, or both. Phase 1 is useful
    either way. Phases 2 and 3 matter only for live checks.
 2. **Edit mode.** Highlights only while Review is open, or a separate Write and Edit switch.
-3. **Lab results.** Keep the bar under the page, or show results in Review. The bar works with the
-   panel closed. Review keeps everything in one place.
-4. **Overflow as a tab.** With tabs, Review and Overflow can't show at once. The other choice is
-   a third panel, or Overflow under Review in one column.
-5. **Which side.** macOS apps put the inspector on the right. Undertext has Alternatives on the
-   left. This plan keeps the left, because it is learned and the right has the page tools.
-6. **Grade formula.** Automated Readability Index (letters, no syllables) or Flesch-Kincaid
+3. **Which side.** macOS apps put the inspector on the right. Undertext has Alternatives on the
+   left. Phase 1 kept the left, because it is learned and the right has the page tools.
+4. **Grade formula.** Automated Readability Index (letters, no syllables) or Flesch-Kincaid
    (syllables, harder in code). Hemingway doesn't say which it uses. Also: a target setting, or a
    fixed grade 9.
-7. **Rewrites across paragraphs.** An alternative can't span a line break. A selection across
+5. **Rewrites across paragraphs.** An alternative can't span a line break. A selection across
    paragraphs could become one version per paragraph, or be refused.
-8. **Where Feedback goes.** A section in Review, a third tab, or text added to Overflow.
-9. **"Why it's marked".** In the Here panel only, or also on hover over the highlight.
-10. **The long-sentences check.** Today it is an instant Lab check. Live "hard" and "very hard"
-    would replace it. Remove it, or keep it as a one-shot check.
+6. **Where Feedback goes.** A section in Review, a third tab, or text added to Overflow.
+7. **"Why it's marked".** In the Here panel only, or also on hover over the highlight.
+8. **The long-sentences check.** Today it is an instant check in Review. Live "hard" and "very
+   hard" would replace it. Remove it, or keep it as a one-shot check.

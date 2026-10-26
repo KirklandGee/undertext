@@ -763,28 +763,12 @@ button:focus-visible {
   opacity: 0.5;
 }
 
-.lab {
-  position: fixed;
-  right: 14px;
-  bottom: 44px;
-  z-index: 15;
-  width: min(330px, calc(100vw - 32px));
-  padding: 8px;
-  background: var(--menu);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+/* Review's buttons line up with the tabs; their padding hangs out to the left. */
+.side-body.review {
+  gap: 0;
+  margin: 0 -8px;
 }
 
-.lab-title {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 8px 8px;
-  font-style: italic;
-  color: var(--accent);
-}
-
-.lab-hint,
 .lab-note {
   font-style: normal;
   font-size: 11px;

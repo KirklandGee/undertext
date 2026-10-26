@@ -1,7 +1,8 @@
 # Undertext
 
 A local Markdown writing tool with layers under the text: alternatives, ghosts, paragraph
-versions, Overflow, and an AI Lab. React and CodeMirror 6 in a Tauri 2 app, built for macOS.
+versions, Overflow, and Review, with AI checks and trims. React and CodeMirror 6 in a Tauri 2 app,
+built for macOS.
 
 What comes next, and the decisions behind the editor: the "Next" section of
 `docs/codemirror-plan.md`.
@@ -61,9 +62,11 @@ the change, whether an agent or a review tool runs it.
   as the text. Undo restores them from a snapshot when a change touches a layer.
 - `preview.ts` hides Markdown syntax away from the cursor. `keys.ts` has Enter, Backspace, and the
   formatting, heading, and list commands. `ink.ts` draws underlines, gutter lines, and dots.
-  `lab.ts` holds the Lab's temporary marks and cuts. `clipboard.ts` keeps layers on copy and paste.
+  `lab.ts` holds Review's temporary marks and cuts. `clipboard.ts` keeps layers on copy and paste.
   `setup.ts` puts it together and builds the `EditorInfo` the React panels read.
-- `src/App.tsx` is the app shell. `src/ai/tasks.ts` turns Claude's answers into page ranges.
+- `src/App.tsx` is the app shell. The left panel follows the caret (`src/components/AltPanel.tsx`).
+  The right panel is about the whole page: Review and Overflow (`src/components/RightPanel.tsx`).
+  `src/ai/tasks.ts` turns Claude's answers into page ranges.
 - `src-tauri/src/lib.rs`: file reads and writes (a save refuses to overwrite a change from another
   app unless told to), and `open_url` for web and mail links.
 
