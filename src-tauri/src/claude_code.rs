@@ -277,13 +277,30 @@ mod tests {
     }
 
     #[test]
-    fn passes_model_effort_and_schema() {
-        let args = args(&request(), "claude-opus-5-5");
-        let after = |flag: &str| &args[args.iter().position(|a| a == flag).unwrap() + 1];
-        assert_eq!(after("--model"), "claude-opus-5-5");
-        assert_eq!(after("--effort"), "low");
-        assert_eq!(after("--json-schema"), r#"{"type":"object"}"#);
-        assert_eq!(after("--tools"), "");
+    fn builds_the_command_line() {
+        assert_eq!(
+            args(&request(), "claude-opus-5-5"),
+            [
+                "-p",
+                "--output-format",
+                "json",
+                "--model",
+                "claude-opus-5-5",
+                "--effort",
+                "low",
+                "--system-prompt",
+                "sys",
+                "--json-schema",
+                r#"{"type":"object"}"#,
+                "--tools",
+                "",
+                "--strict-mcp-config",
+                "--setting-sources",
+                "",
+                "--safe-mode",
+                "--no-session-persistence",
+            ]
+        );
     }
 
     #[test]

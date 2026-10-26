@@ -121,11 +121,13 @@ mod tests {
 
         // Unchanged since the page read it: the save goes through.
         assert!(write_text(path.clone(), "edited".into(), Some("mine".into())).is_ok());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "edited");
         // Another app changed it: refused, and the file keeps their text.
+        // `src/lib/files.ts` matches this exact error.
         fs::write(&file, "theirs").unwrap();
         assert_eq!(
             write_text(path.clone(), "again".into(), Some("edited".into())),
-            Err(CHANGED_ON_DISK.into())
+            Err("changed_on_disk".to_string())
         );
         assert_eq!(fs::read_to_string(&file).unwrap(), "theirs");
         // Without `expected` (Keep mine), it overwrites.

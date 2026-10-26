@@ -211,12 +211,20 @@ mod tests {
 
     #[test]
     fn builds_a_structured_output_request() {
-        let body = request_body(&request(), true);
-        assert_eq!(body["model"], MODEL);
-        assert_eq!(body["fallbacks"], "default");
-        assert_eq!(body["output_config"]["format"]["type"], "json_schema");
-        assert_eq!(body["output_config"]["effort"], "low");
-        assert!(request_body(&request(), false).get("fallbacks").is_none());
+        let without_fallback = json!({
+            "model": "claude-opus-5-5",
+            "max_tokens": 1000,
+            "system": "sys",
+            "messages": [{ "role": "user", "content": "hi" }],
+            "output_config": {
+                "effort": "low",
+                "format": { "type": "json_schema", "schema": { "type": "object" } },
+            },
+        });
+        assert_eq!(request_body(&request(), false), without_fallback);
+        let mut with_fallback = without_fallback;
+        with_fallback["fallbacks"] = json!("default");
+        assert_eq!(request_body(&request(), true), with_fallback);
     }
 
     #[test]

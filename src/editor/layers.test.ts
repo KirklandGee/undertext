@@ -8,7 +8,6 @@ import {
   cycleAlt,
   cycleAtCaret,
   deleteGhosts,
-  findAlt,
   forkVersion,
   jumpToItem,
   removeAltVariant,
@@ -61,9 +60,13 @@ describe("alternatives", () => {
     const id = altIdAt(state, "struggle");
     const pos = at(state, "struggle") + "struggle".length - 1;
     state = state.update({ changes: { from: pos, insert: "s" } }).state;
+    expect(save(state)).toBe("the {{tension|>strugglse}} here\n");
     state = apply(state, cycleAlt(state, id, 1));
+    expect(state.doc.toString()).toBe("the tension here");
+    expect(save(state)).toBe("the {{tension|strugglse}} here\n");
     state = apply(state, cycleAlt(state, id, 1));
     expect(state.doc.toString()).toBe("the strugglse here");
+    expect(save(state)).toBe("the {{tension|>strugglse}} here\n");
   });
 
   it("takes letters typed at its end, but not a space or text at its start", () => {
@@ -158,8 +161,12 @@ describe("paragraph versions", () => {
     expect(save(state)).toBe(":::alt\nOriginal paragraph.\n:::or*\nOriginal paragraph. Edited.\n:::\n");
     state = apply(state, setVersionActive(state, 0, 0));
     expect(state.doc.toString()).toBe("Original paragraph.");
+    expect(save(state)).toBe(":::alt*\nOriginal paragraph.\n:::or\nOriginal paragraph. Edited.\n:::\n");
     state = run(state, undo);
     expect(state.doc.toString()).toBe("Original paragraph. Edited.");
+    expect(save(state)).toBe(":::alt\nOriginal paragraph.\n:::or*\nOriginal paragraph. Edited.\n:::\n");
+    state = run(state, redo);
+    expect(save(state)).toBe(":::alt*\nOriginal paragraph.\n:::or\nOriginal paragraph. Edited.\n:::\n");
   });
 
   it("brings in the layers of the version it switches to", () => {
@@ -174,8 +181,10 @@ describe("paragraph versions", () => {
     let state = stateFor("Above.\n\n:::alt\nA.\n:::or\nB.\n:::\n");
     state = state.update({ changes: { from: 6, to: 8 } }).state;
     expect(layersOf(state).versions).toEqual([]);
+    expect(save(state)).toBe("Above.A.\n");
     state = run(state, undo);
     expect(layersOf(state).versions).toHaveLength(1);
+    expect(save(state)).toBe("Above.\n\n:::alt*\nA.\n:::or\nB.\n:::\n");
   });
 });
 
@@ -188,19 +197,20 @@ describe("keyboard navigation", () => {
 
   it("jumps forward and back with wrap-around", () => {
     let state = stateFor(md);
-    const items = versionedItems(state);
+    // "one" starts at 6. The last paragraph and its first word, "two", both start at 35.
+    expect(state.doc.toString()).toBe("Start one here.\n\nPlain paragraph.\n\ntwo and more.");
     let last: number | null = null;
     const jump = (dir: 1 | -1) => {
       const r = jumpToItem(state, dir, last)!;
       state = apply(state, r.spec);
       last = r.index;
-      return state.selection.main.head;
+      return [state.selection.main.head, r.index];
     };
-    expect(jump(1)).toBe(items[0].from);
-    expect(jump(1)).toBe(items[1].from);
-    expect(jump(1)).toBe(items[2].from);
-    expect(jump(1)).toBe(items[0].from);
-    expect(jump(-1)).toBe(items[2].from);
+    expect(jump(1)).toEqual([6, 0]);
+    expect(jump(1)).toEqual([35, 1]);
+    expect(jump(1)).toEqual([35, 2]);
+    expect(jump(1)).toEqual([6, 0]);
+    expect(jump(-1)).toEqual([35, 2]);
   });
 
   it("cycles the word at the caret before its paragraph", () => {
@@ -228,6 +238,6 @@ describe("ghosts and counting", () => {
     let state = stateFor("A {{one|>uno}} word. {-gone-}\n\n:::alt\nFirst.\n:::or*\nSecond.\n:::\n");
     state = apply(state, settleAll(state));
     expect(save(state)).toBe("A uno word. {-gone-}\n\nSecond.\n");
-    expect(findAlt(state, "x")).toBeNull();
+    expect(layersOf(state)).toEqual({ alts: [], ghosts: [{ from: 12, to: 16 }], versions: [] });
   });
 });
