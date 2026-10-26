@@ -10,8 +10,7 @@ description: Fixes a bug so it stays fixed, with a regression test that proves t
 2. **Reproduce it at the lowest layer that shows it.** A test on `EditorState` in
    `src/editor/*.test.ts` beats one through React. A test in the Rust file's `mod tests` beats the
    app. Run it: it must fail, for the reason in the report. Done when you have that failing test.
-   - Example, for "Enter in a list item leaves a stray space", in `src/editor/keys.test.ts`. This
-     bug is real and still open:
+   - Example, for "Enter in a list item leaves a stray space", in `src/editor/keys.test.ts`:
      `expect(run(stateFor("1. one‸ two"), enter).text).toBe("1. one\n2. ‸two")`
    - Some bugs show only in WebKit: caret, IME, dead keys. Reproduce those in `pnpm tauri dev` and
      write the steps down. Still add a test for any part the editor state can show.

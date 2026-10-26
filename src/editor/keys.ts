@@ -22,6 +22,8 @@ function nodeAt(state: EditorState, pos: number, names: string[]): SyntaxNode | 
 
 const continueMarkup = insertNewlineContinueMarkupCommand({ nonTightLists: false });
 const EMPTY_ITEM = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?$/;
+/** Quote and list markup up to, not including, the space after it. */
+const BARE_MARKER = /^[\s>]*(?:(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?)?$/;
 
 /** Enter: continue a list or quote, a plain line in code, else a new paragraph. */
 export const enter: StateCommand = (target) => {
@@ -31,10 +33,15 @@ export const enter: StateCommand = (target) => {
   const range = state.selection.main;
   const line = state.doc.lineAt(range.from);
   if (nodeAt(state, head, ["ListItem", "Blockquote"])) {
+    // CodeMirror drops the spaces before the caret, but not those after it. A
+    // caret right after a marker, as in `1.‸ a`, keeps the space that ends it.
+    let to = head;
+    const bare = BARE_MARKER.test(state.doc.sliceString(line.from, head));
+    while (!bare && to < line.to && /[ \t]/.test(state.doc.sliceString(to, to + 1))) to++;
     // An empty top-level item ends the list: drop it, and leave a paragraph to
     // type in, with blank lines around it. Items below become a list of their
     // own. A nested one goes to CodeMirror, which outdents it.
-    if (range.empty && EMPTY_ITEM.test(line.text) && !/^\s/.test(line.text) && head === line.to) {
+    if (range.empty && EMPTY_ITEM.test(line.text) && !/^\s/.test(line.text) && to === line.to) {
       const hasAfter = line.number < state.doc.lines && state.doc.line(line.number + 1).text.trim() !== "";
       dispatch(
         state.update({
@@ -46,7 +53,24 @@ export const enter: StateCommand = (target) => {
       );
       return true;
     }
-    return continueMarkup(target);
+    // Delete the spaces after the caret first, so the new item doesn't begin with one.
+    if (to === head) return continueMarkup(target);
+    const spaces = state.changes({ from: head, to });
+    const trimmed = state.update({ changes: spaces }).state;
+    return continueMarkup({
+      state: trimmed,
+      dispatch: (tr) =>
+        dispatch(
+          state.update({
+            changes: spaces.compose(tr.changes),
+            selection: tr.selection,
+            // Mapped in two steps, so a ghost that began with those spaces starts in the new item.
+            effects: setLayers.of(mapLayers(layersOf(trimmed), tr.changes)),
+            scrollIntoView: true,
+            userEvent: "input",
+          }),
+        ),
+    });
   }
 
   if (!line.text.trim()) return insertNewline(target);
