@@ -496,3 +496,90 @@ describe("the popover on a misspelled word", () => {
     expect(whyNoAction(state, popoverAt(state)!)).toBe("An alternative or a ghost cuts through it.");
   });
 });
+
+describe("the popover on a punctuation mistake", () => {
+  const FIX: PopoverAction = { kind: "fix", label: "said," };
+
+  it("opens with Review closed, says what's wrong, and uses the fix", () => {
+    const state = click(stateFor("He said , then left.\n", false), 5);
+    expect(shown(state)).toEqual(["punctuation", "said ,"]);
+    expect(popoverContent(state, popoverAt(state)!)).toEqual({
+      title: "Punctuation",
+      text: "A space before the comma.",
+      why: null,
+      actions: [FIX],
+      hint: "⌥↩ uses it · esc closes",
+    });
+    expect(actionHint(popoverAt(state)!, FIX)).toBe("Replaces it. ⌘Z brings it back.");
+    const fixed = state.update(firstAction(state)!.spec!).state;
+    expect(pageMarkdown(fixed, "")).toBe("He said, then left.\n");
+    expect(popoverAt(fixed)).toBeNull();
+    expect(undoRedo(fixed)).toEqual(["He said , then left.\n", "He said, then left.\n"]);
+    const used = state.update(useFixAt(state)!).state;
+    expect(pageMarkdown(used, "")).toBe("He said, then left.\n");
+  });
+
+  it("says what's missing where there is no fix", () => {
+    const state = click(stateFor("We left (in a hurry.\n", false), 9);
+    expect(shown(state)).toEqual(["punctuation", "(in"]);
+    expect(popoverContent(state, popoverAt(state)!)).toEqual({
+      title: "Punctuation",
+      text: "No closing parenthesis.",
+      why: null,
+      actions: [],
+      hint: null,
+    });
+    expect(firstAction(state)).toBeNull();
+  });
+
+  it("says why the fix can't go, as over an alternative", () => {
+    const state = click(stateFor("He {{said ,|told}} it.\n", false), 4);
+    expect(shown(state)).toEqual(["punctuation", "said ,"]);
+    expect(actionsFor(state, popoverAt(state)!)).toEqual([]);
+    expect(whyNoAction(state, popoverAt(state)!)).toBe("Part of it already has alternatives.");
+  });
+
+  it("stays open while the caret moves inside its mark", () => {
+    let state = click(stateFor("He said , then left.\n", false), 5);
+    state = caret(state, 8);
+    expect(shown(state)).toEqual(["punctuation", "said ,"]);
+    expect(shown(caret(state, 12))).toBeNull();
+  });
+
+  it("comes after a misspelled word on the same words", () => {
+    const page = "We recieve , today.";
+    const state = stateFor(`${page}\n`, false).update(spellingChecked([{ text: page, checked: { language: "en", words: [[3, 10]] } }])).state;
+    expect(shown(click(state, 5))).toEqual(["spelling", "recieve"]);
+    expect(shown(click(state, 11))).toEqual(["punctuation", "recieve ,"]);
+  });
+
+  it("lets a Review word mark or a writing issue on its words come first, and stays out of Review's panel", () => {
+    // "basically" at 3–12 is filler; "basically ," at 3–14 has a space before the comma.
+    let state = stateFor("He basically , left.\n", true);
+    expect(shown(click(state, 5))).toEqual(["filler", "basically"]);
+    state = caret(state, 5);
+    expect(describeEditor(state).checks).toMatchObject({ here: "Filler. It adds words, not meaning.", action: "Ghost it" });
+    expect(pageMarkdown(state.update(firstAction(state)!.spec!).state, "")).toBe("He {-basically-} , left.\n");
+    // On the comma, the punctuation mark: the panel says nothing, and ⌥↩ uses its fix.
+    state = caret(state, 13);
+    expect(describeEditor(state).checks).toMatchObject({ here: null, fix: null, action: null });
+    expect(pageMarkdown(state.update(firstAction(state)!.spec!).state, "")).toBe("He basically, left.\n");
+    expect(shown(click(state, 13))).toEqual(["punctuation", "basically ,"]);
+
+    const issue: WritingIssue = { from: 3, to: 14, kind: "grammar", note: "Cut it.", fix: "then," };
+    expect(shown(click(state.update(setWritingIssues([issue])).state, 13))).toEqual(["grammar", "basically ,"]);
+  });
+
+  it("comes before a sentence mark around it", () => {
+    // 21 words, very hard to read.
+    const page = "The committee reviewed the proposal , discussed the budget, weighed the risks, and approved the plan before the deadline passed last week.";
+    const state = click(stateFor(`${page}\n`, true), 37);
+    expect(describeEditor(state).checks?.counts).toMatchObject({ hard: 0, veryHard: 1 });
+    expect(shown(state)).toEqual(["punctuation", "proposal ,"]);
+    // With the popover closed, the panel says nothing, as ⌥↩ fixes the comma.
+    const closed = caret(state.update(closePopover).state, 37);
+    expect(popoverAt(closed)).toBeNull();
+    expect(describeEditor(closed).checks).toMatchObject({ here: null, fix: null, action: null });
+    expect(closed.update(firstAction(closed)!.spec!).state.doc.toString()).toBe(page.replace("proposal ,", "proposal,"));
+  });
+});

@@ -20,6 +20,7 @@
   --hl-simpler: rgba(95, 200, 130, 0.22);
   --hl-grammar: rgba(225, 105, 215, 0.26);
   --spelling: rgba(245, 95, 95, 0.85);
+  --punctuation: rgba(100, 165, 245, 0.95);
   --mono: "iA Writer Mono S", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
   --text-size: 15px;
   color-scheme: dark;
@@ -47,6 +48,7 @@
     --hl-simpler: rgba(40, 170, 90, 0.2);
     --hl-grammar: rgba(200, 50, 180, 0.17);
     --spelling: rgba(215, 45, 45, 0.8);
+    --punctuation: rgba(40, 115, 220, 0.9);
     color-scheme: light;
   }
 }
@@ -900,6 +902,14 @@ button:focus-visible {
   text-underline-offset: 4px;
 }
 
+/* Punctuation mistakes (src/editor/proofing.ts). They show while writing too, as spelling does. */
+.pn {
+  text-decoration: underline dotted var(--punctuation);
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 4px;
+}
+
 /* Claude's writing issues. Hemingway's green is taken by simpler words here. */
 .hl-grammar {
   background: var(--hl-grammar);
@@ -971,6 +981,10 @@ button:focus-visible {
 
 .hl-pop-grammar::before {
   background: var(--hl-grammar);
+}
+
+.hl-pop-punctuation::before {
+  background: var(--punctuation);
 }
 
 .hl-pop-spelling::before {

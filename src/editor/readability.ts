@@ -425,7 +425,7 @@ const SIMPLER_WORDS = phrases([...SIMPLER_FORMS.keys()]);
 
 const ADVERB = /(?<![\p{L}\p{N}'’-])\p{L}+ly(?![\p{L}\p{N}'’-])/giu;
 /** Words that end in -ly but are not adverbs. */
-const LY_WORDS = new Set(
+export const LY_WORDS = new Set(
   (
     "only early daily weekly monthly yearly hourly nightly family reply apply supply comply imply rely ally rally " +
     "tally belly bully jelly lily fly butterfly holy ugly silly lonely lovely friendly unfriendly likely unlikely " +

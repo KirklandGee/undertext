@@ -17,4 +17,8 @@ describe("how the editor is built", () => {
   it("keeps the readability checks free of the editor: readability.ts imports nothing", () => {
     expect(dependencies("src/editor/readability.ts")).toEqual([]);
   });
+
+  it("keeps the punctuation rules free of the editor: punctuation.ts imports only readability.ts", () => {
+    expect(dependencies("src/editor/punctuation.ts")).toEqual(["./readability"]);
+  });
 });

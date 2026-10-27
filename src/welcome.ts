@@ -14,7 +14,7 @@ Paragraphs can have versions too. Press ⌘⇧D to fork the one you are in, then
 
 Not sure a sentence belongs? Select it and press ⌘/ to ghost it. {-It stays here, faint, so you can read the paragraph without it.-} Put the cursor inside it and press ⌘/ again to revive it.
 
-Your Mac's dictionary checks the spelling as you write. A word it doesn't know, like recieve, gets a wavy line. Click it for suggestions.
+Your Mac's dictionary checks the spelling as you write. A word it doesn't know, like recieve, gets a wavy line. Click it for suggestions. A punctuation slip, like the space in “wait ,” here, gets a dotted line. Click it for the fix.
 
 Markdown renders as you write: **bold**, *italic*, \`code\`, and [links](https://github.com/klipstack/undertext). Put the cursor on them to see the syntax. ⌘B, ⌘I, ⌘E, and ⌘⇧K add them. ⌘-click opens a link.
 

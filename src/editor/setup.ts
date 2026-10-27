@@ -23,8 +23,9 @@ import { inkLayers } from "./ink";
 import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
 import { layers, layersField, layersOf } from "./layers";
-import { actionHint, actionsFor, popover, popoverAt, RewriteTarget } from "./popover";
+import { actionHint, actionsFor, markAtCaret, popover, popoverAt, RewriteTarget } from "./popover";
 import { livePreview } from "./preview";
+import { proofing } from "./proofing";
 import { Kind, KINDS } from "./readability";
 import { Speller, spelling } from "./spelling";
 
@@ -139,6 +140,7 @@ export function createEditorState(
       lab,
       highlights(checks),
       spelling(speller, (message) => handlers?.().notice(message)),
+      proofing(),
       popover(handlers && ((target) => handlers().rewrite(target))),
       livePreview,
       inkLayers,
@@ -268,9 +270,11 @@ export function describe(state: EditorState): EditorInfo {
     const writing = writingIssues(state);
     for (const i of [...report.issues, ...(writing ?? [])]) counts[i.kind] += 1;
     // The popover's mark when it's open, so the panel, the palette, and ⌥↩ all mean the same one.
-    // Spelling isn't one of Review's checks: its popover says all there is.
+    // Spelling and punctuation aren't Review's checks: their popover says all there is, and the
+    // panel says nothing where ⌥↩ would fix one.
     const open = popoverAt(state);
-    const at = open?.kind === "spelling" ? null : (open ?? issueAt(state, state.selection.main.head));
+    const caret = markAtCaret(state);
+    const at = !caret || caret.kind === "spelling" || caret.kind === "punctuation" ? null : (open ?? issueAt(state, state.selection.main.head));
     const first = at && actionsFor(state, at)[0];
     // No fix to offer where it can't apply, such as over an alternative.
     const fix = first?.kind === "fix" ? first.label : null;

@@ -13,6 +13,7 @@
   <a href="#build-and-run">Build and run</a> ·
   <a href="#shortcuts">Shortcuts</a> ·
   <a href="#spelling">Spelling</a> ·
+  <a href="#punctuation">Punctuation</a> ·
   <a href="#ai-and-review">AI and Review</a> ·
   <a href="https://github.com/klipstack/undertext/issues">Issues</a>
 </p>
@@ -36,6 +37,7 @@ other ways you might say them.
 - **Paragraph versions.** Fork a paragraph, rewrite it in place, and switch between the versions.
 - **Ghost.** Dim text you might cut. It stays readable but easy to ignore.
 - **Spelling.** Your Mac's spell checker underlines words it doesn't know, as you write.
+- **Punctuation.** Slips such as "said ," or "the the" get a dotted line and a fix, as you write.
 - **Review.** A side panel that grades the page and highlights hard sentences, weakeners, and
   simpler words as you type. Optional AI help finds writing issues, marks, fixes, and trims, but
   never rewrites your text on its own.
@@ -145,6 +147,27 @@ Click a misspelled word, or right-click it, for suggestions. A suggestion takes 
 and ⌘Z brings it back. ⌥↩ uses the first one. "Learn spelling" adds the word to your Mac's
 dictionary, which every app shares. ⌘Z can't undo that: right-click the word and choose "Unlearn
 spelling". It shows on any word in your Mac's dictionary, also one learned in another app.
+
+## Punctuation
+
+Punctuation slips get a dotted blue line as you write, with Review open or closed. Each has one
+right fix:
+
+- A space before punctuation: "said ," becomes "said,".
+- No space after a comma, a semicolon, or the end of a sentence: "fine.Then" becomes "fine. Then".
+- Doubled punctuation or a doubled word: ",," and "the the". "Had had" and "that that" stay.
+- Hyphens for a dash: "late--very" and "late - very" become "late—very", or "late — very" or
+  "late – very" on a page that spaces its dashes. Between numbers, "1990--1995" becomes "1990–1995".
+  "9am - 5pm" and "Monday - Friday" stay.
+- A hyphen after an -ly adverb: "highly-rated" becomes "highly rated".
+- A decade with an apostrophe: "the 1990's" becomes "the 1990s".
+
+A parenthesis or a curly double quote with no partner in its paragraph is marked too. Only you know
+where its partner goes, so it has no fix. A quote may run on into a paragraph that opens with one,
+as in fiction. Click a mark to see what's wrong, and use the fix or press ⌥↩. ⌘Z brings your text
+back. A slip you are still typing waits until you move on, and an opening parenthesis or quote
+waits while you type on in its sentence. Code, link addresses, HTML, and ghosted text aren't checked. The rules
+are for English.
 
 ## AI and Review
 

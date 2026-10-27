@@ -351,7 +351,7 @@ Six releases, in this order, each its own commit after a review.
 2. **No new dashes from Claude.** The prompts for other ways to say it and for rewrites say not to
    add a dash. A suggestion with more dashes than the text it replaces is dropped. A dash here is
    "—", "–" between words, "--", or a hyphen with a space on each side; "1990–1995" is a range.
-3. **Punctuation mistakes as you write.** Local rules, each with one right fix. Like spelling, they
+3. **Punctuation mistakes as you write.** Local rules, most with one right fix. Like spelling, they
    show with Review open or closed, as a dotted blue underline, and a click opens the popover. The
    fix replaces the text, and ⌘Z brings it back. The rules:
    - A space before `,` `.` `;` `:` `!` or `?`: "said ," becomes "said,".
@@ -363,13 +363,22 @@ Six releases, in this order, each its own commit after a review.
    - Doubled punctuation: ",," becomes ",", and ".." becomes ".". An ellipsis stays.
    - A doubled word: "the the" becomes "the". "Had had", "that that", and a few more stay.
    - "--", or a hyphen with a space on each side, between words becomes a dash in the page's style.
+     Between numbers, "--" becomes an en dash: "1990–1995". A hyphen between numbers, hours, days,
+     or months is a range, as in "9am - 5pm", "2019 - present", and "Monday - Friday", and stays,
+     and so does an arrow, "-->".
    - A hyphen after an -ly adverb: "highly-rated" becomes "highly rated". Words that only end in
      -ly stay, as in "family-owned" and "early-stage".
    - An opening `(` or `“` with no closing one in its paragraph, or a closing one with no opening
-     one. There is no fix: the popover says what's missing. ":)" and "a)" don't count.
+     one. There is no fix: the popover says what's missing. ":)", "a)", and a bracket next to a bare
+     address don't count. A quote may run on into a paragraph that opens with one, as in fiction.
    - "the 1990's" becomes "the 1990s".
 
-   Code, link addresses, HTML, and ghosted text aren't checked, and no rule reads across them.
+   Code, link addresses, HTML, and ghosted text aren't checked, and no rule reads across them. A
+   mistake you are typing waits until the caret leaves it, and a lone opening bracket or quote while
+   you type on in its sentence. A click on words with a Review mark opens that mark first; a
+   punctuation mistake comes before a mark on a whole sentence. Each block's result is kept until the
+   block or the page's dash style changes: on a 22,000-word page in Node, the first check takes
+   16 ms, and each edit after it 2 ms; on 100,000 words, 46 ms and 6 ms. The fix is its own undo step, as a spelling fix is.
 4. **Dashes in Review.** A live check, shown only while Review is open, with a row, a count, and an
    eye. A dash is "—", or "–" with a space on each side; "1990–1995" is a range. A paragraph may
    use dashes once: a pair around an aside, or one dash before a break. Each later use in it is
