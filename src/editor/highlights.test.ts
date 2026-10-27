@@ -3,6 +3,7 @@ import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import { parsePage } from "./format";
 import {
+  applyAllFixes,
   applyFix,
   highlightsField,
   issueAt,
@@ -292,5 +293,178 @@ describe("writing issues from Claude", () => {
     const state = stateFor("Long walks can help {{yourself|you}} relax.\n", true);
     expect(applyFix(state, { from: 20, to: 28, kind: "grammar", note: "", fix: "you" })).toBeNull();
     expect(applyFix(state, { from: 0, to: 8, kind: "grammar", note: "", fix: "" })).toBeNull();
+  });
+
+  it("come back when ⌘Z undoes the edit that dropped them", () => {
+    let state = stateFor(TEXT, true).update(setWritingIssues(issues)).state;
+    state = state.update(applyFix(state, issues[0])!).state;
+    expect(writingIssues(state)).toEqual([{ ...issues[1], from: 34, to: 36 }]);
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    expect(state.doc.toString()).toBe(TEXT.trimEnd());
+    expect(writingIssues(state)).toEqual(issues);
+    step(redo);
+    expect(writingIssues(state)).toEqual([{ ...issues[1], from: 34, to: 36 }]);
+  });
+
+  it("come back on their words when ⌘Z undoes typing and the edit together", () => {
+    // "teh" at 4–7. Typing "the" before it moves it to 7–10, and deleting it drops it, in one undo step.
+    const mark: WritingIssue = { from: 4, to: 7, kind: "grammar", note: "Spelling.", fix: "the" };
+    let state = stateFor("Fix teh and go.\n", true).update(setWritingIssues([mark])).state;
+    state = state.update({ changes: { from: 4, insert: "the" }, userEvent: "input.type" }).state;
+    state = state.update({ changes: { from: 7, to: 10 }, userEvent: "delete.forward" }).state;
+    expect(state.doc.toString()).toBe("Fix the and go.");
+    expect(writingIssues(state)).toEqual([]);
+    undo({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    expect(state.doc.toString()).toBe("Fix teh and go.");
+    expect(writingIssues(state)).toEqual([mark]);
+  });
+
+  it("come back on ⌘Z beside a newer list, which stays", () => {
+    let state = stateFor(TEXT, true).update(setWritingIssues(issues)).state;
+    state = state.update(applyFix(state, issues[0])!).state;
+    // A second run, on "Long walks can help you relax and do it.": "relax" at 24–29.
+    const fresh: WritingIssue = { from: 24, to: 29, kind: "grammar", note: "Try “rest”.", fix: "rest" };
+    state = state.update(setWritingIssues([fresh])).state;
+    undo({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    expect(state.doc.toString()).toBe(TEXT.trimEnd());
+    // "yourself" comes back. "do" went with the second run, and stays gone.
+    expect(writingIssues(state)).toEqual([issues[0], { ...fresh, from: 29, to: 34 }]);
+  });
+
+  it("don't come back over a newer mark", () => {
+    // "Use all" changes only "eh" in "teh" at 4–7, so a newer mark on its "t" at 4–5 stays.
+    let state = stateFor("Fix teh and recieve it now. It works.\n", true)
+      .update(setWritingIssues([{ from: 4, to: 7, kind: "grammar", note: "Spelling.", fix: "the" }]))
+      .state;
+    state = state.update(applyAllFixes(state)!.spec).state;
+    const fresh: WritingIssue = { from: 4, to: 5, kind: "grammar", note: "A capital.", fix: "T" };
+    state = state.update(setWritingIssues([fresh])).state;
+    undo({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    expect(state.doc.toString()).toBe("Fix teh and recieve it now. It works.");
+    expect(writingIssues(state)).toEqual([fresh]);
+  });
+});
+
+describe("Use all", () => {
+  // "teh" at 4–7, "recieve" at 12–19, and "It works." at 28–37, which Claude says to cut.
+  const PAGE = "Fix teh and recieve it now. It works.\n";
+  const all: WritingIssue[] = [
+    { from: 4, to: 7, kind: "grammar", note: "Spelling.", fix: "the" },
+    { from: 12, to: 19, kind: "grammar", note: "Spelling.", fix: "receive" },
+    { from: 28, to: 37, kind: "grammar", note: "Cut it.", fix: "" },
+  ];
+
+  it("uses every fix that fits in one change, and keeps the rest marked", () => {
+    let state = stateFor(PAGE, true).update(setWritingIssues(all)).state;
+    expect(describeEditor(state).checks?.fixAll).toBe(2);
+    const used = applyAllFixes(state);
+    expect(used?.count).toBe(2);
+    state = state.update(used!.spec).state;
+    expect(state.doc.toString()).toBe("Fix the and receive it now. It works.");
+    expect(layersOf(state).alts).toEqual([]);
+    expect(pageMarkdown(state, "")).toBe("Fix the and receive it now. It works.\n");
+    expect(writingIssues(state)).toEqual([all[2]]);
+    expect(describeEditor(state).checks?.fixAll).toBe(0);
+  });
+
+  it("leaves marks you can't see alone", () => {
+    const closed = stateFor(PAGE).update(setWritingIssues(all)).state;
+    expect(applyAllFixes(closed)).toBeNull();
+    expect(describeEditor(closed).checks?.fixAll).toBe(0);
+    const hidden = stateFor(PAGE, true).update(setWritingIssues(all)).state.update(setHighlights({ hidden: ["grammar"] })).state;
+    expect(applyAllFixes(hidden)).toBeNull();
+    expect(describeEditor(hidden).checks?.fixAll).toBe(0);
+  });
+
+  it("is its own undo step, apart from typing", () => {
+    let state = stateFor(PAGE, true).update(setWritingIssues(all)).state;
+    // An "s" typed right after "teh", whose fix changes "eh" at 5–7, then "Use all" at once.
+    state = state.update({ changes: { from: 7, insert: "s" }, userEvent: "input.type" }).state;
+    state = state.update(applyAllFixes(state)!.spec).state;
+    expect(state.doc.toString()).toBe("Fix thes and receive it now. It works.");
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    expect(state.doc.toString()).toBe("Fix tehs and recieve it now. It works.");
+    step(undo);
+    expect(state.doc.toString()).toBe(PAGE.trimEnd());
+  });
+
+  it("changes a/an, keeps the marks it doesn't fix, and puts all back in place with ⌘Z", () => {
+    // "an" at 7–9, "initial" at 10–17, "Hello" at 24–29, " ," at 29–31, "do" at 42–44.
+    const page = "It was an initial test. Hello , world. We do it.\n";
+    const marks: WritingIssue[] = [
+      { from: 10, to: 17, kind: "grammar", note: "Plainer.", fix: "first" },
+      { from: 24, to: 29, kind: "grammar", note: "Say who.", fix: "" },
+      { from: 29, to: 31, kind: "grammar", note: "No space.", fix: "," },
+      { from: 42, to: 44, kind: "grammar", note: "Use “doing”.", fix: "doing" },
+    ];
+    let state = stateFor(page, true).update(setWritingIssues(marks)).state;
+    const used = applyAllFixes(state);
+    expect(used?.count).toBe(3);
+    state = state.update(used!.spec).state;
+    const fixed = "It was a first test. Hello, world. We doing it.";
+    expect(state.doc.toString()).toBe(fixed);
+    expect(writingIssues(state)).toEqual([{ ...marks[1], from: 21, to: 26 }]);
+
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    expect(pageMarkdown(state, "")).toBe(page);
+    expect(writingIssues(state)).toEqual(marks);
+    step(redo);
+    expect(state.doc.toString()).toBe(fixed);
+    expect(writingIssues(state)).toEqual([{ ...marks[1], from: 21, to: 26 }]);
+  });
+
+  it("brings back the words and the marks with one ⌘Z", () => {
+    let state = stateFor(PAGE, true).update(setWritingIssues(all)).state;
+    state = state.update(applyAllFixes(state)!.spec).state;
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    expect(pageMarkdown(state, "")).toBe(PAGE);
+    expect(writingIssues(state)).toEqual(all);
+    step(redo);
+    expect(pageMarkdown(state, "")).toBe("Fix the and receive it now. It works.\n");
+    expect(writingIssues(state)).toEqual([all[2]]);
+  });
+
+  it("adds or drops a space, and skips a fix that overlaps one before it", () => {
+    // "ended.Next" at 3–13, its "Next" at 9–13, and " ," at 28–30.
+    let state = stateFor("It ended.Next we left. Hello , world.\n", true);
+    state = state.update(
+      setWritingIssues([
+        { from: 3, to: 13, kind: "grammar", note: "A space.", fix: "ended. Next" },
+        { from: 9, to: 13, kind: "grammar", note: "Another word.", fix: "Then" },
+        { from: 28, to: 30, kind: "grammar", note: "No space.", fix: "," },
+      ]),
+    ).state;
+    const used = applyAllFixes(state);
+    expect(used?.count).toBe(2);
+    state = state.update(used!.spec).state;
+    expect(state.doc.toString()).toBe("It ended. Next we left. Hello, world.");
+    const saved = pageMarkdown(state, "");
+    expect(saved).toBe("It ended. Next we left. Hello, world.\n");
+    expect(parsePage(saved).text).toBe("It ended. Next we left. Hello, world.");
+    // The skipped fix's words didn't change, so it stays, and fits now.
+    expect(writingIssues(state)).toEqual([{ from: 10, to: 14, kind: "grammar", note: "Another word.", fix: "Then" }]);
+    expect(describeEditor(state).checks?.fixAll).toBe(1);
+  });
+
+  it("does nothing where no fix fits", () => {
+    expect(applyAllFixes(stateFor(PAGE, true))).toBeNull();
+    const cut = stateFor(PAGE, true).update(setWritingIssues([all[2]])).state;
+    expect(applyAllFixes(cut)).toBeNull();
+    const over = stateFor("Fix {{teh|tea}} and go.\n", true).update(setWritingIssues([all[0]])).state;
+    expect(applyAllFixes(over)).toBeNull();
+  });
+
+  it("keeps a fix that doesn't fit marked while it uses the others", () => {
+    // "teh" at 4–7 is an alternative, "recieve" at 12–19 isn't.
+    let state = stateFor("Fix {{teh|tea}} and recieve it.\n", true).update(setWritingIssues(all.slice(0, 2))).state;
+    const used = applyAllFixes(state);
+    expect(used?.count).toBe(1);
+    state = state.update(used!.spec).state;
+    expect(pageMarkdown(state, "")).toBe("Fix {{teh|tea}} and receive it.\n");
+    expect(writingIssues(state)).toEqual([all[0]]);
   });
 });

@@ -45,7 +45,7 @@ From its help pages, read on 2026-10-26.
 | AI synonyms, Rephrase             | Alternatives, and "Suggest other ways" (⌘⇧G)         |
 | Shorten it                        | Trims: −10%, −20%, −35%, −50%                        |
 | Hard sentences, qualifiers        | Lab checks: long, convoluted, hedges and filler      |
-| Grammar and spelling              | "Fix punctuation and typos", as alternatives         |
+| Grammar and spelling              | "Find writing issues", and spelling as you type      |
 | Tone                              | Lab check "Off-tone words" marks words; no rewrite   |
 | Use suggestion (replaces text)    | A suggestion becomes an alternative; a mistake's fix replaces it |
 
@@ -104,7 +104,7 @@ or the word count for Review, shows the tab, or closes the panel when that tab a
 2. **Live checks**: one row per category, with its count and an eye toggle. They update as you
    type. Clicking a row jumps to the next one, like ⌥L.
 3. **Ask Claude**: one-shot checks. Weakest sentences, convoluted sentences, off-tone words, hedges
-   and filler, typos. Later, Feedback.
+   and filler, writing issues. Later, Feedback.
 4. **Trim**: −10%, −20%, −35%, −50%.
 
 **Overflow**: today's text area, unchanged.
@@ -187,10 +187,10 @@ keystroke in WebKit's engine. The checks run with Review closed too, for the gra
 reason and a fix. Claude quotes a snippet and its corrected form; the mark covers the words that
 change. The quotes are found on the page as it is when the answer comes, so typing meanwhile is
 safe. Code is skipped. Review opens to show the marks. "Use" replaces the words with the fix, and
-undo brings them back. A fix that adds or drops a space takes in the whole word, as typo fixes do.
+undo brings them back. A fix that adds or drops a space takes in the whole word.
 A fix isn't offered in code, over part of a ghost, over an alternative, or where it would start a
-line with Markdown markup. The same rules hold for typo fixes. A mark moves with edits, and goes
-away when its own text changes.
+line with Markdown markup. A mark moves with edits, and goes away when its own text changes. ⌘Z
+on that edit brings the mark back. "Use all" uses every fix that fits in one change.
 
 The rules are for English.
 
@@ -280,7 +280,7 @@ Phases 4 and 5 don't need the checker, so either can come next.
 - Writing issues come from Claude on request, never as you type, so nothing is sent until you ask.
 - A writing issue's fix replaces the words, with no alternative. Claude is asked to flag only
   mistakes, not style, so the old words aren't worth keeping, and undo brings them back. Suggestions from the live checks
-  are style choices, so they still become alternatives. Typo fixes do too, for now.
+  are style choices, so they still become alternatives.
 - Writing issues are pink. Green was taken by simpler words.
 - A writing issue goes away when its own text changes, not its whole paragraph. That way using one
   fix keeps the others in the paragraph.
@@ -345,7 +345,9 @@ Six releases, in this order, each its own commit after a review.
    did, with a reason for each, and a mistake isn't worth keeping as an alternative. Writing issues
    get "Use all": one change for every fix that fits, and one ⌘Z brings them all back. An issue
    with no fix, or with a fix that doesn't fit, stays marked. A writing issue on exactly a
-   misspelled word isn't marked, as the spelling mark offers a fix already.
+   misspelled word isn't marked when the Mac suggests the same fix, as the spelling mark offers it.
+   "Use all" is its own undo step, and uses only the marks Review shows. ⌘Z on any edit that drops
+   writing issues, a fix or typing, brings those marks back, beside any newer ones.
 2. **No new dashes from Claude.** The prompts for other ways to say it and for rewrites say not to
    add a dash. A suggestion with more dashes than the text it replaces is dropped.
 3. **Punctuation mistakes as you write.** Local rules, each with one right fix. Like spelling, they

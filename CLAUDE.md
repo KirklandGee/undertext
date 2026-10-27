@@ -91,7 +91,7 @@ the change, whether an agent or a review tool runs it.
   step, not only at the end.
 - Never fake code in `src/` that decides the result. Stubs the test never calls are fine. The
   network is the one boundary: give the answer straight to the function that reads it, as the
-  `applyFixes` tests do.
+  `writingIssuesFrom` tests do.
 - See each new test fail once, by breaking the code or undoing the fix. Say how it failed in your
   report.
 - `.only` fails `pnpm verify`. Skip a test only when it needs the network or an account, with a

@@ -1,3 +1,4 @@
+import { invertedEffects, isolateHistory } from "@codemirror/commands";
 import { ChangeSet, EditorSelection, EditorState, StateEffect, StateField, TransactionSpec } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 import { articleFix, BLOCK_START, leadLength, touchesCode } from "./commands";
@@ -32,6 +33,11 @@ interface HighlightState extends HighlightSettings {
 const OFF: HighlightSettings = { on: false, hidden: [] };
 const settingsEffect = StateEffect.define<Partial<HighlightSettings>>();
 const writingEffect = StateEffect.define<WritingIssue[] | null>();
+/** Issues an edit dropped, back with its undo. History maps it when it joins that edit with the one before. */
+const restoreEffect = StateEffect.define<WritingIssue[]>({
+  map: (issues, mapping) =>
+    issues.map((i) => ({ ...i, from: mapping.mapPos(i.from, 1), to: mapping.mapPos(i.to, -1) })).filter((i) => i.from < i.to),
+});
 
 // One decoration per kind, so a keystroke builds no new ones. A click on a mark explains it, in
 // the popover (src/editor/popover.ts).
@@ -60,6 +66,21 @@ function draw(s: Omit<HighlightState, "decos">): HighlightState {
   return { ...s, decos: Decoration.set(shown.map((i) => markFor(i).range(i.from, i.to)), true) };
 }
 
+/** Whether an edit touches an issue's text, which drops it. */
+function touches(changes: ChangeSet, i: { from: number; to: number }): boolean {
+  let hit = false;
+  changes.iterChangedRanges((fromA, toA) => {
+    if (fromA < i.to && toA > i.from) hit = true;
+  });
+  return hit;
+}
+
+/** The issues an edit drops, as using a fix does, come back with its undo. */
+const restoreWriting = invertedEffects.of((tr) => {
+  const dropped = tr.docChanged ? (tr.startState.field(highlightsField, false)?.writing ?? []).filter((i) => touches(tr.changes, i)) : [];
+  return dropped.length ? [restoreEffect.of(dropped)] : [];
+});
+
 export const highlightsField = StateField.define<HighlightState>({
   create: (state) => draw({ ...OFF, report: checkPage(pageText(state)), writing: null }),
   update(prev, tr) {
@@ -73,26 +94,23 @@ export const highlightsField = StateField.define<HighlightState>({
       if (e.is(settingsEffect)) next = { ...next, ...e.value };
       // An issue placed on another version of the page would break every later edit.
       else if (e.is(writingEffect)) next = { ...next, writing: e.value && e.value.filter((i) => i.to <= tr.state.doc.length) };
-      else continue;
+      // A newer list may have come since: the issues come back beside it, where they don't overlap it.
+      else if (e.is(restoreEffect) && next.writing) {
+        const now = next.writing;
+        const back = e.value.filter((i) => i.to <= tr.state.doc.length && !now.some((n) => n.from < i.to && i.from < n.to));
+        next = { ...next, writing: [...now, ...back].sort((a, b) => a.from - b.from) };
+      } else continue;
       changed = true;
     }
     return changed ? draw(next) : prev;
   },
-  provide: (f) => EditorView.decorations.from(f, (s) => s.decos),
+  provide: (f) => [EditorView.decorations.from(f, (s) => s.decos), restoreWriting],
 });
 
 /** Moves writing issues with an edit. An edit that touches an issue's text drops it. */
 function mapWriting(writing: WritingIssue[] | null, changes: ChangeSet): WritingIssue[] | null {
   if (!writing || changes.empty) return writing;
-  const out: WritingIssue[] = [];
-  for (const i of writing) {
-    let touched = false;
-    changes.iterChangedRanges((fromA, toA) => {
-      if (fromA < i.to && toA > i.from) touched = true;
-    });
-    if (!touched) out.push({ ...i, from: changes.mapPos(i.from, 1), to: changes.mapPos(i.to, -1) });
-  }
-  return out;
+  return writing.filter((i) => !touches(changes, i)).map((i) => ({ ...i, from: changes.mapPos(i.from, 1), to: changes.mapPos(i.to, -1) }));
 }
 
 export const highlights = (settings: HighlightSettings = OFF) =>
@@ -206,7 +224,7 @@ export function fitFix(state: EditorState, from: number, to: number, fix: string
 /**
  * Uses a mark's fix. Claude's writing issue is a mistake, so its fix replaces the words. A
  * suggestion is a style choice, so it becomes an alternative with the fix active and the original
- * kept, as typo fixes do. Null when the mark has no fix, or the fix has no place (see fitFix).
+ * kept. Null when the mark has no fix, or the fix has no place (see fitFix).
  */
 export function applyFix(state: EditorState, issue: Issue): TransactionSpec | null {
   const fit = issue.fix ? fitFix(state, issue.from, issue.to, issue.fix) : null;
@@ -224,4 +242,56 @@ export function applyFix(state: EditorState, issue: Issue): TransactionSpec | nu
     changes,
     effects: setLayers.of({ ...mapped, alts: [...mapped.alts, alt].sort((x, y) => x.from - y.from) }),
   };
+}
+
+/** The "Use all" button: "Use 1 fix", "Use all 3 fixes". */
+export const useAllLabel = (n: number) => (n === 1 ? "Use 1 fix" : `Use all ${n} fixes`);
+
+/**
+ * The part of an edit that changes the text, so marks beside it stay. It keeps at least one
+ * character of `issue`, so the issue's own mark goes.
+ */
+function narrow(state: EditorState, edit: { from: number; to: number; insert: string }, issue: { from: number; to: number }) {
+  let { from, to, insert } = edit;
+  const old = state.doc.sliceString(from, to);
+  let head = 0;
+  while (head < old.length && head < insert.length && old[head] === insert[head]) head++;
+  let tail = 0;
+  while (tail < old.length - head && tail < insert.length - head && old.at(-1 - tail) === insert.at(-1 - tail)) tail++;
+  from += head;
+  to -= tail;
+  insert = insert.slice(head, insert.length - tail);
+  if (from >= issue.to) {
+    insert = state.doc.sliceString(issue.to - 1, from) + insert;
+    from = issue.to - 1;
+  }
+  if (to <= issue.from) {
+    insert += state.doc.sliceString(to, issue.from + 1);
+    to = issue.from + 1;
+  }
+  return { from, to, insert };
+}
+
+/**
+ * "Use all": every shown writing issue's fix that fits, in one change and its own undo step, so one
+ * ⌘Z brings the words and the marks back. An issue with no fix, or one that doesn't fit or overlaps
+ * an earlier fix, stays marked unless its words change. Null when no fix fits.
+ */
+export function applyAllFixes(state: EditorState): { spec: TransactionSpec; count: number } | null {
+  const taken: { from: number; to: number }[] = [];
+  const edits: { from: number; to: number; insert: string }[] = [];
+  let count = 0;
+  for (const issue of shownIssues(state)) {
+    if (issue.kind !== "grammar") continue;
+    const fit = issue.fix ? fitFix(state, issue.from, issue.to, issue.fix) : null;
+    if (!fit) continue;
+    const article = articleFix(state, fit.from, fit.fix);
+    const mine = [...(article ? [article] : []), fit];
+    if (mine.some((m) => taken.some((t) => t.from < m.to && m.from < t.to))) continue;
+    taken.push(...mine);
+    if (article) edits.push(narrow(state, article, article));
+    edits.push(narrow(state, { ...fit, insert: fit.fix }, issue));
+    count++;
+  }
+  return count ? { spec: { changes: edits, annotations: isolateHistory.of("full") }, count } : null;
 }

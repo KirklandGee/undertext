@@ -5,10 +5,8 @@ import { AltPanel, AltTab } from "./components/AltPanel";
 import { AiError, aiCancel, aiClearKey, aiKeyStatus, aiSetKey } from "./ai/client";
 import {
   addRewrites,
-  applyFixes,
   CHECKS,
   CheckId,
-  findFixes,
   findWritingIssues,
   proposeTrim,
   runCheck,
@@ -59,7 +57,7 @@ import {
   wordRangeAt,
 } from "./editor/commands";
 import { parsePage } from "./editor/format";
-import { HighlightSettings, setHighlights, setWritingIssues } from "./editor/highlights";
+import { applyAllFixes, HighlightSettings, setHighlights, setWritingIssues, writingIssues } from "./editor/highlights";
 import { clearLab, ghostLabNotice, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
 import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layers";
 import { Kind } from "./editor/readability";
@@ -72,6 +70,7 @@ import {
   learnSpelling,
   loadGuesses,
   misspellingAt,
+  misspellings,
   unlearnSpelling,
 } from "./editor/spelling";
 import {
@@ -414,23 +413,13 @@ export default function App() {
     );
   };
 
-  const fixTypos = () =>
-    void runAi("Checking typos and punctuation", async (live) => {
-      const fixes = await findFixes(view().state);
-      if (!live()) return;
-      const { spec, count } = applyFixes(view().state, fixes);
-      view().focus();
-      if (!count) {
-        flash("No typos found");
-        return;
-      }
-      dispatch(spec);
-      flash(`${count} ${count === 1 ? "fix" : "fixes"} added as alternatives. ⌥L visits each. ⌥K restores your text.`);
-    });
-
   const findIssues = () =>
     void runAi("Finding writing issues", async (live) => {
       const answers = await findWritingIssues(view().state);
+      if (!live()) return;
+      // A fix the Mac suggests for a misspelled word is in its spelling mark already.
+      const words = misspellings(view().state).filter((w) => answers.some((a) => a.find.includes(w.word)));
+      await Promise.all(words.map((w) => loadGuesses(view(), w).catch(() => [])));
       if (!live()) return;
       const issues = writingIssuesFrom(view().state, answers);
       dispatch(setWritingIssues(issues));
@@ -440,6 +429,20 @@ export default function App() {
       const n = issues.length;
       flash(n ? `${n} writing ${n === 1 ? "issue" : "issues"} marked in pink` : "No writing issues found");
     });
+
+  /** "Use all": every writing issue's fix that fits, in one change. */
+  const useAllFixes = () => {
+    const used = applyAllFixes(view().state);
+    if (used) dispatch(used.spec);
+    view().focus();
+    if (!used) {
+      flash("No fixes to use");
+      return;
+    }
+    const left = writingIssues(view().state)?.length ?? 0;
+    const fixes = `${used.count} ${used.count === 1 ? "fix" : "fixes"}`;
+    flash(`Used ${fixes}. ⌘Z brings your words back.${left ? ` ${left} left to look at.` : ""}`);
+  };
 
   /** Uses the fix of the mark at the caret: a mistake is replaced, a suggestion becomes an alternative. */
   const useFix = () => {
@@ -928,9 +931,9 @@ export default function App() {
             }}
             onTab={(next) => showPanel(next, true)}
             onOverflow={setOverflow}
-            onFix={fixTypos}
             onFindIssues={findIssues}
             onUseFix={useFix}
+            onUseAll={useAllFixes}
             onCheck={check}
             onTrim={trim}
             onCancel={cancelAi}
@@ -1054,9 +1057,9 @@ export default function App() {
               stash,
               fork,
               aiAlternatives,
-              fixTypos,
               findIssues,
               useFix,
+              useAllFixes,
               check,
               trim,
               walkLab,

@@ -18,7 +18,7 @@ import {
   wordRangeAt,
 } from "./commands";
 import { Layers, MARKDOWN_EXTENSIONS, serializePage } from "./format";
-import { highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
+import { applyAllFixes, highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
 import { inkLayers } from "./ink";
 import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
@@ -215,6 +215,8 @@ export interface EditorInfo {
     fixHint: string | null;
     /** The first action at the caret when it isn't a fix, such as "Ghost it" or "Suggest rewrites". ⌥↩ runs it. */
     action: string | null;
+    /** How many writing issue fixes "Use all" would use. */
+    fixAll: number;
   } | null;
 }
 
@@ -282,6 +284,7 @@ export function describe(state: EditorState): EditorInfo {
       fix,
       fixHint: at && first?.kind === "fix" ? actionHint(at, first) : null,
       action: first && first.kind !== "fix" ? first.label : null,
+      fixAll: writing?.length ? (applyAllFixes(state)?.count ?? 0) : 0,
     };
   }
 

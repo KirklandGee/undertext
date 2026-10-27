@@ -1,6 +1,7 @@
 import { KeyboardEvent, RefObject, useEffect, useRef } from "react";
 import { CHECKS, CheckId, TRIMS, TrimId } from "../ai/tasks";
 import { Kind } from "../editor/readability";
+import { useAllLabel } from "../editor/highlights";
 import { EditorInfo } from "../editor/setup";
 import { Icon } from "./Icon";
 import { RightTab } from "./panels";
@@ -20,9 +21,10 @@ interface Props {
   onFindIssues(): void;
   /** Uses the fix of the mark at the caret. */
   onUseFix(): void;
+  /** Uses every writing issue's fix that fits. */
+  onUseAll(): void;
   onTab(tab: RightTab): void;
   onOverflow(text: string): void;
-  onFix(): void;
   onCheck(id: CheckId): void;
   onTrim(id: TrimId): void;
   onCancel(): void;
@@ -53,7 +55,7 @@ export function RightPanel(props: Props) {
 
 /** Arrow keys move, Return runs, Esc cancels a run or goes back to the page. */
 function Review(props: Props) {
-  const { busy, onFix, onFindIssues, onCheck, onTrim, onCancel, onPage } = props;
+  const { busy, onFindIssues, onCheck, onTrim, onCancel, onPage } = props;
   const ref = useRef<HTMLDivElement>(null);
 
   // A run replaces the buttons, and its end removes the spinner. Keep the focus in the panel then,
@@ -95,9 +97,6 @@ function Review(props: Props) {
             <button className="lab-item" onClick={onFindIssues}>
               Find writing issues
             </button>
-            <button className="lab-item" onClick={onFix}>
-              Fix punctuation and typos
-            </button>
             {CHECKS.map((c) => (
               <button key={c.id} className="lab-item" onClick={() => onCheck(c.id)}>
                 {c.title}
@@ -135,7 +134,7 @@ const WEAKENERS: { kind: Kind; one: string; many: string }[] = [
  * The grade, then one row per kind of highlight: its count, a click to the next one, and an eye.
  * It takes the focus when Review opens from its key, before the first count arrives.
  */
-function Readability({ checks, words, hidden, onToggle, onJump, onUseFix }: Props) {
+function Readability({ checks, words, hidden, onToggle, onJump, onUseFix, onUseAll }: Props) {
   if (!checks) return <div className="readability" tabIndex={-1} data-focus />;
   const { counts, sentences: total } = checks;
   const sentences = (n: number, what: string) =>
@@ -190,6 +189,11 @@ function Readability({ checks, words, hidden, onToggle, onJump, onUseFix }: Prop
         counts.simpler === 1 ? "word with a simpler alternative" : "words with a simpler alternative",
       )}
       {checks.ran && row(["grammar"], "grammar", counts.grammar, counts.grammar === 1 ? "writing issue" : "writing issues")}
+      {checks.fixAll > 0 && (
+        <button className="hl-fix hl-fix-all" onClick={onUseAll} title="Uses every fix that fits. ⌘Z brings your words back.">
+          {useAllLabel(checks.fixAll)}
+        </button>
+      )}
     </>
   );
 }

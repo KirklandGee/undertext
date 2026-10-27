@@ -156,7 +156,8 @@ Toggle rules:
   maps to one position, as today.
 - `isHeading`: read the syntax tree instead of a regex.
 - Lab spans: a state field with a `DecorationSet`. Same rule: an edit inside a span drops it.
-- `applyFixes`: one transaction with the text change and the alt effects.
+- `applyFixes`: one transaction with the text change and the alt effects. (Removed 2026-10-27, with
+  "Fix punctuation and typos".)
 
 ## Phases
 

@@ -1,15 +1,16 @@
 import { redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
-import { addRewrites, applyFixes, longSentences, narrowChange, rewritePrompt, writingIssuesFrom } from "../ai/tasks";
+import { addRewrites, longSentences, narrowChange, rewritePrompt, writingIssuesFrom } from "../ai/tasks";
 import { matchScore, rank } from "../palette/match";
 import { buildCommands, GROUPS, PaletteCommand, PaletteContext } from "../palette/commands";
 import { createAlt, findAlt } from "./commands";
 import { parsePage } from "./format";
-import { setHighlights, setWritingIssues } from "./highlights";
+import { applyFix, setHighlights, setWritingIssues } from "./highlights";
 import { ghostLabNotice, ghostLabSpans, labSpans, labSpansThatCutAlternatives, makeCuts, setLab } from "./lab";
 import { layersOf } from "./layers";
 import { createEditorState, describe as describeEditor, pageMarkdown } from "./setup";
+import { setGuesses, spellingChecked } from "./spelling";
 
 const stateFor = (md: string) => {
   const { text, alts, ghosts, versions } = parsePage(md);
@@ -22,18 +23,6 @@ describe("AI results on the page", () => {
     expect(narrowChange("sat on teh mat", "sat on the mat")).toMatchObject({ original: "teh", fixed: "the" });
     expect(narrowChange("however we go", "however, we go")).toMatchObject({ original: "however", fixed: "however," });
     expect(narrowChange("same", "same")).toBeNull();
-  });
-
-  it("applies fixes as alternatives that keep the original", () => {
-    const state = stateFor("The cat sat on teh mat.\n");
-    const { spec, count } = applyFixes(state, [
-      { paragraph: 1, find: "on teh mat", replace: "on the mat" },
-      { paragraph: 1, find: "not in the text", replace: "x" },
-    ]);
-    expect(count).toBe(1);
-    const next = state.update(spec).state;
-    expect(next.doc.toString()).toBe("The cat sat on the mat.");
-    expect(pageMarkdown(next, "")).toBe("The cat sat on {{teh|>~the}} mat.\n");
   });
 
   it("marks Claude's writing issues on the words that change, with the fix", () => {
@@ -54,61 +43,49 @@ describe("AI results on the page", () => {
     ]);
   });
 
-  it("keeps a fix that adds or drops a space through a save, and leaves code alone", () => {
-    const state = stateFor("It ended.Next we left. Hello , world. Run `teh` now.\n");
-    const { spec, count } = applyFixes(state, [
-      { paragraph: 1, find: "ended.Next", replace: "ended. Next" },
-      { paragraph: 1, find: "Hello , world", replace: "Hello, world" },
-      { paragraph: 1, find: "`teh`", replace: "`the`" },
-    ]);
-    expect(count).toBe(2);
-    const next = state.update(spec).state;
-    expect(next.doc.toString()).toBe("It ended. Next we left. Hello, world. Run `teh` now.");
-    const saved = pageMarkdown(next, "");
-    expect(saved).toBe("It {{ended.Next|>~ended. Next}} we left. {{Hello ,|>~Hello,}} world. Run `teh` now.\n");
-    const back = parsePage(saved);
-    expect(back.text).toBe("It ended. Next we left. Hello, world. Run `teh` now.");
-    expect(back.alts.map((a) => a.variants)).toEqual([
-      ["ended.Next", "ended. Next"],
-      ["Hello ,", "Hello,"],
-    ]);
-  });
-
-  it("leaves a fix out where its alternative would save a different page", () => {
-    const count = (md: string, find: string, replace: string) =>
-      applyFixes(stateFor(`${md}\n`), [{ paragraph: 1, find, replace }]).count;
+  it("offers no writing issue fix where it would save a different page", () => {
+    const fixes = (md: string, find: string, replace: string) => {
+      const state = stateFor(`${md}\n`);
+      return writingIssuesFrom(state, [{ paragraph: 1, find, replace, reason: "Fix." }]).filter((i) => applyFix(state, i)).length;
+    };
+    expect(fixes("We met.Then,now go.", ",now", ", now")).toBe(1);
     // The whole word would cut into a ghost, take in code, or start a line with list or heading markup.
-    expect(count("We {-met.Then-},now go.", ",now", ", now")).toBe(0);
-    expect(count("Set `max size`=10.Then restart.", "10.Then", "10. Then")).toBe(0);
-    expect(count("-Buy milk", "-Buy", "- Buy")).toBe(0);
-    expect(count("#Setup", "#Setup", "# Setup")).toBe(0);
-    expect(count("> -  Teh cat sat.", "-  Teh", "- Teh")).toBe(0);
-    expect(count("- One.\n  -  Teh cat sat.", "-  Teh", "- Teh")).toBe(0);
-    expect(count("Run `npm install to start.", "`npm install", "`npm install`")).toBe(0);
-    expect(count("Some text here.\n\n    teh = 1", "teh", "the")).toBe(0);
+    expect(fixes("We {-met.Then-},now go.", ",now", ", now")).toBe(0);
+    expect(fixes("Set `max size`=10.Then restart.", "10.Then", "10. Then")).toBe(0);
+    expect(fixes("-Buy milk", "-Buy", "- Buy")).toBe(0);
+    expect(fixes("#Setup", "#Setup", "# Setup")).toBe(0);
+    expect(fixes("> -  Teh cat sat.", "-  Teh", "- Teh")).toBe(0);
+    expect(fixes("- One.\n  -  Teh cat sat.", "-  Teh", "- Teh")).toBe(0);
+    expect(fixes("Run `npm install to start.", "`npm install", "`npm install`")).toBe(0);
+    expect(fixes("Some text here.\n\n    teh = 1", "teh", "the")).toBe(0);
   });
 
-  it("skips a fix that overlaps one before it", () => {
-    const state = stateFor("We met.Then,now go.\n");
-    const { spec, count } = applyFixes(state, [
-      { paragraph: 1, find: "met.Then", replace: "met. Then" },
-      { paragraph: 1, find: ",now", replace: ", now" },
+  it("leaves out a writing issue on a misspelled word when the Mac suggests the same fix", () => {
+    // "recieve" at 3–10, which the Mac marks, and "teh" at 11–14, which it doesn't.
+    let state = stateFor("We recieve teh mail.\n");
+    state = state.update(spellingChecked([{ text: "We recieve teh mail.", checked: { language: "en", words: [[3, 10]] } }])).state;
+    const answers = [
+      { paragraph: 1, find: "recieve", replace: "receive", reason: "Spelling." },
+      { paragraph: 1, find: "teh mail", replace: "the mail", reason: "Spelling." },
+    ];
+    const both = [
+      { from: 3, to: 10, kind: "grammar", note: "Spelling.", fix: "receive" },
+      { from: 11, to: 14, kind: "grammar", note: "Spelling.", fix: "the" },
+    ];
+    // Before the Mac's guesses come, or with none, Claude's fix is the only one: it stays.
+    expect(writingIssuesFrom(state, answers)).toEqual(both);
+    expect(writingIssuesFrom(state.update(setGuesses("recieve", [])).state, answers)).toEqual(both);
+
+    state = state.update(setGuesses("recieve", ["receive", "relieve"])).state;
+    expect(writingIssuesFrom(state, answers)).toEqual([both[1]]);
+    // A fix the Mac doesn't suggest stays, and so does a fix of more than the word.
+    const other = writingIssuesFrom(state, [
+      { paragraph: 1, find: "recieve", replace: "received", reason: "Past tense." },
+      { paragraph: 1, find: "teh mail", replace: "the mail", reason: "Spelling." },
     ]);
-    expect(count).toBe(1);
-    const next = state.update(spec).state;
-    expect(next.doc.toString()).toBe("We met. Then,now go.");
-    expect(pageMarkdown(next, "")).toBe("We {{met.Then|>~met. Then}},now go.\n");
-  });
-
-  it("undoes and redoes typo fixes", () => {
-    let state = stateFor("The cat sat on teh mat.\n");
-    state = state.update(applyFixes(state, [{ paragraph: 1, find: "on teh mat", replace: "on the mat" }]).spec).state;
-    expect(pageMarkdown(state, "")).toBe("The cat sat on {{teh|>~the}} mat.\n");
-    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
-    step(undo);
-    expect(pageMarkdown(state, "")).toBe("The cat sat on teh mat.\n");
-    step(redo);
-    expect(pageMarkdown(state, "")).toBe("The cat sat on {{teh|>~the}} mat.\n");
+    expect(other).toEqual([{ from: 3, to: 10, kind: "grammar", note: "Past tense.", fix: "received" }, both[1]]);
+    const wider = writingIssuesFrom(state, [{ paragraph: 1, find: "recieve teh", replace: "receive the", reason: "Two words." }]);
+    expect(wider).toEqual([{ from: 3, to: 14, kind: "grammar", note: "Two words.", fix: "receive the" }]);
   });
 
   it("leaves Claude's writing issues in code and ghosts alone, and marks each spot once", () => {
@@ -301,9 +278,9 @@ describe("command palette", () => {
       stash: noop,
       fork: noop,
       aiAlternatives: noop,
-      fixTypos: noop,
       findIssues: noop,
       useFix: noop,
+      useAllFixes: noop,
       check: noop,
       trim: noop,
       walkLab: noop,
@@ -339,7 +316,8 @@ describe("command palette", () => {
 
     const closed = buildCommands(ctx(state, {}, { setReviewOpen: (open) => asked.push(open) }));
     expect(find(closed, "lab.open")).toMatchObject({ group: "Review", title: "Open Review", shortcut: "⌘⇧E" });
-    expect(find(closed, "lab.typos").group).toBe("Review");
+    expect(find(closed, "lab.issues").group).toBe("Review");
+    expect(closed.some((c) => c.id === "lab.typos")).toBe(false);
     expect(find(closed, "lab.trim.half").group).toBe("Review");
     expect(find(closed, "overflow.toggle").title).toBe("Open Overflow");
     find(closed, "lab.open").run();
@@ -392,5 +370,24 @@ describe("command palette", () => {
     find(commands, "lab.issues")!.run();
     find(commands, "lab.useFix")!.run();
     expect(ran).toEqual(["find", "fix"]);
+  });
+
+  it("offers Use all while a writing issue's fix fits", () => {
+    const ran: string[] = [];
+    const find = (state: EditorState) => buildCommands(ctx(state, {}, { useAllFixes: () => ran.push("all") })).find((c) => c.id === "lab.fixAll");
+    let state = stateFor("Fix teh and recieve it.\n").update(setHighlights({ on: true })).state;
+    expect(find(state)).toBeUndefined();
+    state = state.update(setWritingIssues([{ from: 4, to: 7, kind: "grammar", note: "Spelling.", fix: "the" }])).state;
+    expect(find(state)).toMatchObject({ group: "Review", title: "Use 1 fix" });
+    state = state.update(
+      setWritingIssues([
+        { from: 4, to: 7, kind: "grammar", note: "Spelling.", fix: "the" },
+        { from: 12, to: 19, kind: "grammar", note: "Spelling.", fix: "receive" },
+      ]),
+    ).state;
+    const entry = find(state)!;
+    expect(entry.title).toBe("Use all 2 fixes");
+    entry.run();
+    expect(ran).toEqual(["all"]);
   });
 });

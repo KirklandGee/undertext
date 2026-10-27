@@ -1,10 +1,10 @@
 import { EditorState, TransactionSpec } from "@codemirror/state";
 import { addAiAlternatives, blockAt, countWords, findAlt, syncedVariants, touchesCode } from "../editor/commands";
-import { Alt, newId } from "../editor/format";
-import { fitFix, WritingIssue } from "../editor/highlights";
+import { WritingIssue } from "../editor/highlights";
 import { LabSpan } from "../editor/lab";
-import { layersOf, mapLayers, setLayers } from "../editor/layers";
+import { layersOf } from "../editor/layers";
 import { checkPage, Kind } from "../editor/readability";
+import { guessesFor, misspellings } from "../editor/spelling";
 import { callClaude } from "./client";
 
 // Each Lab feature is one Claude call with a JSON answer. Claude quotes the
@@ -118,65 +118,7 @@ export async function suggestAlternatives(state: EditorState, altId: string): Pr
 }
 
 // ---------------------------------------------------------------------------
-// 2. Typos and punctuation, applied as alternatives (the fix active, the original kept)
-
-interface Fix {
-  paragraph: number;
-  find: string;
-  replace: string;
-}
-
-export async function findFixes(state: EditorState): Promise<Fix[]> {
-  const paras = docParagraphs(state);
-  if (!paras.length) return [];
-  const answer = await callClaude<{ fixes: Fix[] }>(
-    {
-      system:
-        `${VOICE} Find typos, misspellings, and punctuation mistakes only. Don't change word choice, style, or tone, ` +
-        "and don't rephrase. For each fix, quote a short snippet (a few words, unique within its paragraph) as `find`, " +
-        "and give the same snippet corrected as `replace`. Return an empty list if the draft is clean.",
-      prompt: numbered(paras),
-      schema: object({ fixes: list(object({ paragraph: int, find: str, replace: str })) }),
-      effort: "medium",
-      maxTokens: 16000,
-    },
-    () => mockFixes(paras),
-  );
-  return answer.fixes;
-}
-
-/** One transaction: each fix becomes an alternative with the fix active. */
-export function applyFixes(state: EditorState, fixes: Fix[]): { spec: TransactionSpec; count: number } {
-  const paras = docParagraphs(state);
-  const used: Range[] = [];
-  const edits: { from: number; to: number; original: string; fixed: string }[] = [];
-
-  for (const fix of fixes) {
-    const found = locate(paras, fix.paragraph, fix.find, used);
-    if (!found || fix.find === fix.replace) continue;
-    const change = narrowChange(fix.find, fix.replace);
-    if (!change) continue;
-    const start = found.from + change.start;
-    const fit = fitFix(state, start, start + change.original.length, change.fixed);
-    if (!fit) continue;
-    const { from, to } = fit;
-    if (edits.some((e) => e.from < to && e.to > from)) continue;
-    used.push(found);
-    edits.push({ from, to, original: state.doc.sliceString(from, to), fixed: fit.fix });
-  }
-
-  const changes = state.changes(edits.map((e) => ({ from: e.from, to: e.to, insert: e.fixed })));
-  const mapped = mapLayers(layersOf(state), changes);
-  const alts: Alt[] = edits.map((e) => {
-    const from = changes.mapPos(e.from, -1);
-    return { from, to: from + e.fixed.length, id: newId(), variants: [e.original, e.fixed], active: 1, ai: [e.fixed] };
-  });
-  const spec: TransactionSpec = {
-    changes,
-    effects: setLayers.of({ ...mapped, alts: [...mapped.alts, ...alts].sort((x, y) => x.from - y.from) }),
-  };
-  return { spec, count: edits.length };
-}
+// 2. Fixes: the words a fix changes
 
 /**
  * Shrinks "the cat sat on teh mat" → "the cat sat on the mat" to the changed
@@ -368,7 +310,8 @@ export async function findWritingIssues(state: EditorState): Promise<WritingAnsw
 /**
  * Finds each quote on the page and marks the words that change, with the fix for them. A change
  * with no word to swap, such as a deletion, marks the whole quote. Headings, ghosts, and code are
- * skipped.
+ * skipped, and so is a fix of exactly a misspelled word that the Mac suggests too, as its spelling
+ * mark offers it. Load the guesses for such words first (loadGuesses).
  */
 export function writingIssuesFrom(state: EditorState, answers: WritingAnswer[]): WritingIssue[] {
   const paras = docParagraphs(state);
@@ -382,7 +325,10 @@ export function writingIssuesFrom(state: EditorState, answers: WritingAnswer[]):
     const change = narrowChange(a.find, a.replace);
     const from = found.from + (change?.start ?? 0);
     const to = change ? from + change.original.length : found.to;
-    issues.push({ from, to, kind: "grammar", note: a.reason, fix: change ? change.fixed : a.replace });
+    const fix = change ? change.fixed : a.replace;
+    // The spelling mark offers the same fix. Until the Mac's guesses come, Claude's may be the only one.
+    if (misspellings(state).some((w) => w.from === from && w.to === to && guessesFor(state, w.word)?.includes(fix))) continue;
+    issues.push({ from, to, kind: "grammar", note: a.reason, fix });
   }
   return issues.sort((x, y) => x.from - y.from);
 }
@@ -460,14 +406,6 @@ export function addRewrites(state: EditorState, altId: string, kind: Kind, texts
 
 // ---------------------------------------------------------------------------
 // Development mocks (plain browser only)
-
-function mockFixes(paras: DocParagraph[]): { fixes: Fix[] } {
-  const fixes: Fix[] = [];
-  for (const p of paras) {
-    for (const m of p.text.matchAll(/\bteh\b/g)) fixes.push({ paragraph: p.n, find: m[0], replace: "the" });
-  }
-  return { fixes };
-}
 
 /** A doubled word, and "And" at the start of a sentence. */
 function mockWritingIssues(paras: DocParagraph[]): WritingAnswer[] {

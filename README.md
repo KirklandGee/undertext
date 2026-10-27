@@ -70,7 +70,7 @@ storage, and answers AI requests with fake results so you can try the UI.
 | ⌘K | Command palette: every action available right now, with its shortcut |
 | ⌘⇧A | Alternatives for the word at the cursor or the selection |
 | ⌘⇧G | Suggest other ways to say the word or selection |
-| ⌘⇧E | Review: typo fixes, checks that mark text, and trims. Press again in Review to close it. Esc goes back to the page. |
+| ⌘⇧E | Review: readability, writing issues, checks that mark text, and trims. Press again in Review to close it. Esc goes back to the page. |
 | ⌥J ⌥K | Next / previous version at the cursor (word or sentence, else paragraph) |
 | ⌥⇧J ⌥⇧K | Next / previous version of the paragraph |
 | ⌥L ⌥H | Jump to the next / previous item that has versions (or a mark or cut from a Review check) |
@@ -182,11 +182,10 @@ you can see and undo.
   While they load, the panel shows where they will land, and Esc cancels.
 - **Find writing issues:** Claude marks grammar, spelling, and wrong words in pink, each with a
   reason and a fix. Review opens to show them. Click one and use its button, or put the caret on it
-  and press ⌥↩: the fix replaces the mistake, and ⌘Z brings it back. A mark goes away when you
-  edit its text.
-  Code is left alone.
-- **Fix punctuation and typos:** each fix becomes an alternative with the fix active. ⌥K restores
-  your text.
+  and press ⌥↩: the fix replaces the mistake, and ⌘Z brings it back. "Use all" in Review uses
+  every fix that fits at once, and one ⌘Z brings back your words and the marks. A mark goes away
+  when you edit its text. A word the spell checker marks gets no pink mark when your Mac suggests
+  the same fix. Code is left alone.
 - **Checks:** weakest sentences, convoluted sentences, off-tone words, and hedges and filler. Marks
   are temporary highlights with a reason. "Sentences that run long" runs locally, without AI.
 - **Trim (−10% to −50%):** Claude may only delete. Proposed cuts appear faded. Click one to keep it,

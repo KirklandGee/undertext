@@ -19,6 +19,7 @@ import {
   versionedItems,
 } from "../editor/commands";
 import { inlineText } from "../editor/format";
+import { useAllLabel } from "../editor/highlights";
 import { layersOf } from "../editor/layers";
 import { setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList, toggleStrike } from "../editor/keys";
 import { EditorInfo } from "../editor/setup";
@@ -54,9 +55,9 @@ export interface PaletteContext {
     stash(): void;
     fork(): void;
     aiAlternatives(): void;
-    fixTypos(): void;
     findIssues(): void;
     useFix(): void;
+    useAllFixes(): void;
     check(id: CheckId): void;
     trim(id: TrimId): void;
     walkLab(): void;
@@ -169,6 +170,15 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       run: actions.useFix,
     });
   }
+  if (info.checks?.fixAll) {
+    add({
+      id: "lab.fixAll",
+      group: "Review",
+      title: useAllLabel(info.checks.fixAll),
+      keywords: "grammar writing issues apply fix all proofread",
+      run: actions.useAllFixes,
+    });
+  }
   if (info.checks?.action) {
     add({
       id: "lab.firstAction",
@@ -180,7 +190,6 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     });
   }
   add({ id: "lab.issues", group: "Review", title: "Find writing issues", keywords: "ai grammar style spelling hemingway", run: actions.findIssues });
-  add({ id: "lab.typos", group: "Review", title: "Fix punctuation and typos", keywords: "ai spelling proofread grammar", run: actions.fixTypos });
   for (const c of CHECKS) {
     add({ id: `lab.check.${c.id}`, group: "Review", title: c.title, keywords: c.ai ? "ai check review" : "check review", run: () => actions.check(c.id) });
   }
