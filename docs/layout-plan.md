@@ -331,6 +331,68 @@ show while writing too.
   Review's panel and palette entries leave spelling out. Right-click lists up to five guesses and
   "Learn spelling" above the usual items; the popover shows four.
 
+## Punctuation
+
+Added 2026-10-27. The Mac's spell checker marks words it doesn't know, and nothing else. On seven
+test lines it caught "definately" and "tomorow", and "the the" only with its grammar option. It
+missed "Its easy", "loose track", "the words that slips", "Their going", "said ,", "fine.Then",
+"--", a spaced hyphen, "highly-rated", "received .", and a comma splice. Claude's writing issues
+can find the wrong words. Local rules can find most of the punctuation.
+
+Six releases, in this order, each its own commit after a review.
+
+1. **One AI check for mistakes.** "Fix punctuation and typos" goes. Writing issues cover what it
+   did, with a reason for each, and a mistake isn't worth keeping as an alternative. Writing issues
+   get "Use all": one change for every fix that fits, and one ⌘Z brings them all back. An issue
+   with no fix, or with a fix that doesn't fit, stays marked. A writing issue on exactly a
+   misspelled word isn't marked, as the spelling mark offers a fix already.
+2. **No new dashes from Claude.** The prompts for other ways to say it and for rewrites say not to
+   add a dash. A suggestion with more dashes than the text it replaces is dropped.
+3. **Punctuation mistakes as you write.** Local rules, each with one right fix. Like spelling, they
+   show with Review open or closed, as a dotted blue underline, and a click opens the popover. The
+   fix replaces the text, and ⌘Z brings it back. The rules:
+   - A space before `,` `.` `;` `:` `!` or `?`: "said ," becomes "said,".
+   - No space after a comma or semicolon between letters: "red,green" becomes "red, green".
+     Numbers such as "1,000" stay.
+   - No space after the end of a sentence: "fine.Then" becomes "fine. Then". This needs a
+     lowercase letter, the stop, then a capital and a lowercase letter, so "e.g.", "U.S.", and
+     "Node.js" stay.
+   - Doubled punctuation: ",," becomes ",", and ".." becomes ".". An ellipsis stays.
+   - A doubled word: "the the" becomes "the". "Had had", "that that", and a few more stay.
+   - "--", or a hyphen with a space on each side, between words becomes a dash in the page's style.
+   - A hyphen after an -ly adverb: "highly-rated" becomes "highly rated". Words that only end in
+     -ly stay, as in "family-owned" and "early-stage".
+   - An opening `(` or `“` with no closing one in its paragraph, or a closing one with no opening
+     one. There is no fix: the popover says what's missing. ":)" and "a)" don't count.
+   - "the 1990's" becomes "the 1990s".
+
+   Code, link addresses, HTML, and ghosted text aren't checked, and no rule reads across them.
+4. **Dashes in Review.** A live check, shown only while Review is open, with a row, a count, and an
+   eye. A dash is "—", or "–" with a space on each side; "1990–1995" is a range. A paragraph may
+   use dashes once: a pair around an aside, or one dash before a break. Each later use in it is
+   marked: a pair from dash to dash, a single dash to the end of its sentence. The popover offers
+   "Suggest rewrites", aimed at a comma, a colon, parentheses, or a period, and a rewrite that
+   still has a dash is dropped. A dash in the page's less common style is marked too, with the
+   page's style as its fix.
+5. **Smart quotes and dashes as you type.** Always on, except in code. `"` and `'` become curly:
+   opening after a space, an opening bracket, or the start of a line, else closing. An apostrophe
+   is a closing quote. A second `-` turns "--" into a dash: an en dash where the page's style is
+   spaced en dashes, else an em dash. ⌘Z right after brings back what you typed. A line that
+   starts with "--" stays, so "---" still makes a rule, and so does "<!--". Pasted text stays as
+   it is.
+6. **Sharper writing issues.** The prompt names the punctuation mistakes the rules can't find:
+   comma splices, "its" and "it's", a comma between subject and verb, and an aside that opens with
+   a dash and closes with a comma. It leaves out words that aren't real words, which the spell
+   checker marks.
+
+**The page's dash style** is closed em dashes ("word—word"), spaced em dashes ("word — word"), or
+spaced en dashes ("word – word"), whichever the page uses most. A page with no dashes uses closed
+em dashes. Releases 3, 4, and 5 follow it.
+
+Left out for now: straight and curly quotes mixed on one page, and "..." mixed with "…". Their fix
+needs release 5's rule for opening and closing quotes, so they can come after it. Exclamation marks
+and the serial comma are style calls with no rule to check.
+
 ## Open decisions
 
 1. **Which side.** macOS apps put the inspector on the right. Undertext has Alternatives on the
@@ -341,8 +403,8 @@ show while writing too.
 4. **"Why it's marked" in Here.** It shows in Review now. Also show it in the Here panel, or not.
 5. **The long-sentences check.** Today it is an instant check in Review. Live "hard" and "very
    hard" now cover it. Remove it, or keep it as a one-shot check.
-6. **Writing issues and typo fixes.** "Find writing issues" covers most of what "Fix punctuation
-   and typos" does, one fix at a time. Keep both, or drop the typo fix.
+6. **Writing issues and typo fixes.** Decided 2026-10-27: the typo fix goes, and writing issues get
+   "Use all". See "Punctuation".
 7. **Adverbs hidden at first.** Hemingway counts adverbs but hides their marks until you show
    them. Undertext shows them. Do the same as Hemingway, or not.
 8. **Lab results.** They show in the bar under the page. Move them into Review, or keep the bar.
