@@ -133,9 +133,9 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     add({
       id: "alt.ai",
       group: "Alternatives",
-      title: `Suggest alternatives for ${quote(aiTarget)} with AI`,
+      title: `Suggest other ways to say ${quote(aiTarget)}`,
       shortcut: "⌘⇧G",
-      keywords: "claude ideas synonyms words",
+      keywords: "ai claude ideas synonyms words alternatives",
       run: actions.aiAlternatives,
     });
   }

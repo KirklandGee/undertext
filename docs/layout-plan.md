@@ -41,7 +41,7 @@ From its help pages, read on 2026-10-26.
 
 | Hemingway                         | Undertext today                                      |
 | --------------------------------- | ---------------------------------------------------- |
-| AI synonyms, Rephrase             | Alternatives, and "Suggest with AI" (⌘⇧G)            |
+| AI synonyms, Rephrase             | Alternatives, and "Suggest other ways" (⌘⇧G)         |
 | Shorten it                        | Trims: −10%, −20%, −35%, −50%                        |
 | Hard sentences, qualifiers        | Lab checks: long, convoluted, hedges and filler      |
 | Grammar and spelling              | "Fix punctuation and typos", as alternatives         |
@@ -80,8 +80,8 @@ A new feature goes left if it changes with the caret. It goes right if it is abo
 Today's Alternatives panel, grown. Same shortcut, ⌘⇧A.
 
 - **Alternatives and versions**, as today: Word, Sentence, and Paragraph.
-- **Rewrite with Claude**: Simplify, Shorter, Polish, Tone (a short list), and a free-text ask.
-  Today's "Suggest with AI" becomes one of these.
+- **Suggest rewrites**: Simplify, Shorter, Polish, Tone (a short list), and a free-text ask.
+  Today's "Suggest other ways" becomes one of these.
   - On a word or sentence, each result is a new variant of the alternative.
   - On a whole paragraph, each result is a new paragraph version.
   - ↑↓ steps through results, as today. Nothing is applied until you pick it, and the original
@@ -129,7 +129,7 @@ The floating Lab menu goes away. Its contents live in Review. The ⌘K entries s
 | Keys | Today                     | After                                   |
 | ---- | ------------------------- | --------------------------------------- |
 | ⌘⇧A  | Alternatives panel        | Here panel                              |
-| ⌘⇧G  | AI alternatives           | Unchanged                               |
+| ⌘⇧G  | Suggest other ways        | Unchanged                               |
 | ⌘⇧E  | Lab menu                  | Review tab                              |
 | ⌘⇧O  | Overflow panel            | Overflow tab                            |
 | ⌘⇧L  | Layers                    | Unchanged; no longer on the word count  |
@@ -253,8 +253,8 @@ Phases 4 and 5 don't need the checker, so either can come next.
   or removed; after "Ghost it" the popover stays on the ghost, with "Remove it" and "Revive it",
   and a click on any ghost while Review is open offers the same. Removing tidies the spaces,
   commas, and capital around the words, and undo brings them back. A writing issue Claude says to
-  cut offers "Remove it". Passive voice, hard sentences, and hidden actions with no suggestion get "Rewrite
-  with Claude". Its prompt names the goal,
+  cut offers "Remove it". Passive voice, hard sentences, and hidden actions with no suggestion get "Suggest
+  rewrites". Its prompt names the goal,
   such as the active voice, and the live checks drop any rewrite they would still mark. The first
   version reused ⌘⇧G, whose drop-in prompt kept 4 of 6 rewrites passive. The prompt names the words
   the checks flagged and the rewrites the sentence has, and a second ask adds to them. ⌥↩ runs the
@@ -281,6 +281,14 @@ Phases 4 and 5 don't need the checker, so either can come next.
 - Writing issues are pink. Green was taken by simpler words.
 - A writing issue goes away when its own text changes, not its whole paragraph. That way using one
   fix keeps the others in the paragraph.
+- While writing, labels and progress text name what a task does, not who does it: "Suggest other
+  ways", "Suggest rewrites", "Finding other ways to say it…". No "AI" or "Claude". Settings, the
+  setup dialogs, and errors from the service still name Claude: they are about your account, or
+  about what failed.
+- While suggestions load, the Word and Sentence tab keeps the button in place, disabled, with a
+  spinner, and two faint rows pulse where the suggestions will land. On the Paragraph tab, the
+  toolbar shows the task instead. Any running task disables the button. Esc in the panel cancels a
+  running task, and closes the panel only when nothing runs.
 - The weakener lists copy what Hemingway marks, checked sentence by sentence in its web editor.
   The first lists used broad patterns and marked about twice as much, much of it wrong, such as
   every "get".

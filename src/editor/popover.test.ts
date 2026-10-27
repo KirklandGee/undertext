@@ -89,7 +89,7 @@ describe("the popover", () => {
     let state = stateFor(`${text}\n`);
     state = state.update(jumpToMark(state, ["hard"], 1)!).state;
     expect(shown(state)).toEqual(["hard", text]);
-    expect(describeEditor(state).checks).toMatchObject({ here: "Hard to read. 18 words.", fix: null, action: "Rewrite with Claude" });
+    expect(describeEditor(state).checks).toMatchObject({ here: "Hard to read. 18 words.", fix: null, action: "Suggest rewrites" });
   });
 
   it("opens on the mark a Review row jumps to", () => {
@@ -294,7 +294,8 @@ describe("popover actions", () => {
     const state = stateFor("- She left. The door was closed by him.\n");
     const issue = popoverAt(click(state, 23))!;
     expect(issue).toMatchObject({ kind: "passive", from: 21, to: 31 });
-    expect(actionsFor(state, issue)).toEqual([{ kind: "rewrite", label: "Rewrite with Claude" }]);
+    expect(actionsFor(state, issue)).toEqual([{ kind: "rewrite", label: "Suggest rewrites" }]);
+    expect(popoverContent(state, issue)).toMatchObject({ hint: "⌥↩ suggests rewrites · esc closes" });
     expect(rewriteRange(state, issue)).toEqual({ from: 12, to: 39 });
     // Claude runs from the app, so the action itself changes nothing here.
     expect(runAction(state, issue, actionsFor(state, issue)[0])).toBeNull();
@@ -313,7 +314,7 @@ describe("popover actions", () => {
     // "The door was closed." at 0–20 became an alternative in an earlier rewrite.
     const state = stateFor("{{The door was closed.|Someone closed the door.}}\n");
     const issue = popoverAt(click(state, 12))!;
-    expect(actionsFor(state, issue)).toEqual([{ kind: "rewrite", label: "Rewrite with Claude" }]);
+    expect(actionsFor(state, issue)).toEqual([{ kind: "rewrite", label: "Suggest rewrites" }]);
     expect(rewriteRange(state, issue)).toEqual({ from: 0, to: 20 });
   });
 

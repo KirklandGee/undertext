@@ -207,7 +207,7 @@ export interface EditorInfo {
     ran: boolean;
     here: string | null;
     fix: string | null;
-    /** The first action at the caret when it isn't a fix: "Ghost it" or "Rewrite with Claude". ⌥↩ runs it. */
+    /** The first action at the caret when it isn't a fix, such as "Ghost it" or "Suggest rewrites". ⌥↩ runs it. */
     action: string | null;
   } | null;
 }

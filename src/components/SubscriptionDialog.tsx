@@ -70,7 +70,7 @@ export function SubscriptionDialog({ hasKey, message, onEnabled, onDisabled, onU
 
         {status && !status.installed && (
           <p>
-            The Lab and AI alternatives can run on your Claude subscription through Claude Code. Install it from
+            Suggestions and the checks you run from Review can use your Claude subscription through Claude Code. Install it from
             claude.com/code and sign in, then check again. Or use an API key instead.
           </p>
         )}
@@ -79,14 +79,15 @@ export function SubscriptionDialog({ hasKey, message, onEnabled, onDisabled, onU
 
         {status?.installed && !status.connected && (
           <p>
-            The Lab and AI alternatives can run on your Claude subscription through Claude Code. Run <code>claude</code>{" "}
+            Suggestions and the checks you run from Review can use your Claude subscription through Claude Code. Run{" "}
+            <code>claude</code>{" "}
             in a terminal and sign in with your Claude account, then check again.
           </p>
         )}
 
         {status?.connected && !status.enabled && (
           <p>
-            Claude Code is signed in{plan}. Use it for the Lab and AI alternatives? Each request sends your document to
+            Claude Code is signed in{plan}. Use it for suggestions and the checks you run from Review? Each request sends your document to
             Claude and counts against your plan's usage limits.
           </p>
         )}

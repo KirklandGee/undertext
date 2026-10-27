@@ -128,7 +128,7 @@ describe("AI results on the page", () => {
   });
 
   it("keeps only Claude's rewrites that fix the mark, as no passive voice left", () => {
-    // The answer one real run gave for "Rewrite with Claude" on this sentence's passive voice.
+    // The answer one real run gave for "Suggest rewrites" on this sentence's passive voice.
     const answer = [
       "The door was shut quickly.",
       "Someone quickly closed the door.",
@@ -325,6 +325,7 @@ describe("command palette", () => {
     expect(titles).toContain("Use “pressure”");
     expect(titles).toContain("Keep “tension”, drop the other alternatives");
     expect(titles).toContain("Bold");
+    expect(titles).toContain("Suggest other ways to say “tension”");
     expect(titles).not.toContain("Ghost the selection");
 
     state = state.update({ selection: EditorSelection.cursor(at(state, "Two")) }).state;

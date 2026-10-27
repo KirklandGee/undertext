@@ -34,7 +34,7 @@ export function KeyDialog({ hasKey, message, onSave, onRemove, onClose }: Props)
         <h2>Anthropic API key</h2>
         {message && <p className="dialog-alert">{message}</p>}
         <p>
-          The Lab and AI alternatives send your text to Claude. The key is stored in the macOS Keychain. Create one at
+          Suggestions and the checks you run from Review send your text to Claude. The key is stored in the macOS Keychain. Create one at
           platform.claude.com → API keys.
         </p>
         <input

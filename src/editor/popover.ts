@@ -173,7 +173,7 @@ export function actionsFor(state: EditorState, issue: Mark): PopoverAction[] {
     return ghostRange(state, issue.from, issue.to) ? [{ kind: "ghost", label: "Ghost it" }, REMOVE] : [REMOVE];
   }
   if (SENTENCES.includes(issue.kind) || issue.kind === "hidden") {
-    return rewriteRange(state, issue) ? [{ kind: "rewrite", label: "Rewrite with Claude" }] : [];
+    return rewriteRange(state, issue) ? [{ kind: "rewrite", label: "Suggest rewrites" }] : [];
   }
   return [];
 }
@@ -265,7 +265,7 @@ const KEY_HINTS: Record<PopoverAction["kind"], string> = {
   ghost: "ghosts it",
   remove: "removes it",
   revive: "revives it",
-  rewrite: "asks Claude",
+  rewrite: "suggests rewrites",
 };
 
 const HINTS: Record<PopoverAction["kind"], string> = {
@@ -273,7 +273,7 @@ const HINTS: Record<PopoverAction["kind"], string> = {
   ghost: "Dims it, so you can read the sentence without it. ⌘/ brings it back.",
   remove: "Deletes it, and tidies the spaces around it. ⌘Z brings it back.",
   revive: "Brings it back to full strength, and into the word count.",
-  rewrite: "Asks Claude for rewrites of the sentence. ↑↓ picks one.",
+  rewrite: "Suggests rewrites of the sentence. ↑↓ picks one.",
 };
 
 /** Runs Claude's rewrite. The app gives it; tests leave it out. */

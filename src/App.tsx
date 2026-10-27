@@ -25,7 +25,16 @@ import { SubscriptionDialog } from "./components/SubscriptionDialog";
 import { LabBar } from "./components/LabBar";
 import { ContextMenu, MenuItem, MenuState } from "./components/ContextMenu";
 import { Icon } from "./components/Icon";
-import { clickPanel, pressPanelKey, RightTab, savedHidden, savedPanel, toggleKinds } from "./components/panels";
+import {
+  aiStatus,
+  clickPanel,
+  pressPanelKey,
+  RightTab,
+  savedHidden,
+  savedPanel,
+  suggestionsPending,
+  toggleKinds,
+} from "./components/panels";
 import { RightPanel } from "./components/RightPanel";
 import {
   addAiAlternatives,
@@ -139,6 +148,8 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => readJSON<string[]>(RECENT_KEY) ?? []);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
+  /** The alternative the running task adds suggestions to, if any. */
+  const [aiAlt, setAiAlt] = useState<string | null>(null);
   const aiRunRef = useRef(0);
   const [keyDialog, setKeyDialog] = useState<{ message?: string; hasKey: boolean } | null>(null);
   const [subscriptionDialog, setSubscriptionDialog] = useState<{ message?: string; hasKey: boolean } | null>(null);
@@ -332,8 +343,11 @@ export default function App() {
     else setSubscriptionDialog({ message, hasKey });
   };
 
-  /** Runs one AI task at a time. Cancelling makes its result be ignored. */
-  const runAi = async (label: string, work: (live: () => boolean) => Promise<void>) => {
+  /**
+   * Runs one AI task at a time. Cancelling makes its result be ignored.
+   * `alt` is the alternative it adds suggestions to, so the panel can show them coming.
+   */
+  const runAi = async (label: string, work: (live: () => boolean) => Promise<void>, alt?: string) => {
     if (aiBusy) {
       flash(`Still working: ${aiBusy}`);
       return;
@@ -341,6 +355,7 @@ export default function App() {
     const run = ++aiRunRef.current;
     const live = () => aiRunRef.current === run && viewRef.current !== null;
     setAiBusy(label);
+    setAiAlt(alt ?? null);
     try {
       await work(live);
     } catch (err) {
@@ -348,7 +363,10 @@ export default function App() {
       if (err instanceof AiError && err.code === "no_key") void openAiSetup(err.message);
       else flash(err instanceof Error ? err.message : String(err));
     } finally {
-      if (aiRunRef.current === run) setAiBusy(null);
+      if (aiRunRef.current === run) {
+        setAiBusy(null);
+        setAiAlt(null);
+      }
     }
   };
 
@@ -357,6 +375,7 @@ export default function App() {
     void aiCancel().catch(() => {});
     aiRunRef.current++;
     setAiBusy(null);
+    setAiAlt(null);
   };
 
   const cancelAi = () => {
@@ -372,13 +391,17 @@ export default function App() {
       return;
     }
     const { id } = r;
-    void runAi("Suggesting alternatives", async (live) => {
-      const texts = await suggestAlternatives(view().state, id);
-      if (!live()) return;
-      const spec = addAiAlternatives(view().state, id, texts);
-      if (spec) dispatch(spec);
-      else flash("No new alternatives");
-    });
+    void runAi(
+      "Finding other ways to say it",
+      async (live) => {
+        const texts = await suggestAlternatives(view().state, id);
+        if (!live()) return;
+        const spec = addAiAlternatives(view().state, id, texts);
+        if (spec) dispatch(spec);
+        else flash("No new alternatives");
+      },
+      id,
+    );
   };
 
   const fixTypos = () =>
@@ -548,14 +571,18 @@ export default function App() {
     }
     view().dispatch({ ...made.spec, selection: EditorSelection.cursor(from) });
     openAlternatives();
-    void runAi("Rewriting with Claude", async (live) => {
-      const texts = await suggestRewrites(view().state, made.id, kind, phrase);
-      if (!live()) return;
-      const spec = addRewrites(view().state, made.id, kind, texts);
-      if (spec) dispatch(spec);
-      // Each one either kept the issue or repeated a version the sentence has.
-      else flash("No new rewrites that fix it. Try again.");
-    });
+    void runAi(
+      "Finding other ways to say it",
+      async (live) => {
+        const texts = await suggestRewrites(view().state, made.id, kind, phrase);
+        if (!live()) return;
+        const spec = addRewrites(view().state, made.id, kind, texts);
+        if (spec) dispatch(spec);
+        // Each one either kept the issue or repeated a version the sentence has.
+        else flash("No new rewrites that fix it. Try again.");
+      },
+      made.id,
+    );
   };
 
   /** Ghosts or revives the selection from a menu, or says why it can't, as ⌘/ does. */
@@ -605,7 +632,7 @@ export default function App() {
       const ghosted = layersOf(state).ghosts.some((g) => g.from < sel.to && g.to > sel.from);
       items.push(
         { label: "Alternatives for selection", shortcut: "⌘⇧A", run: openAlternatives },
-        { label: "AI alternatives for selection", shortcut: "⌘⇧G", run: aiAlternatives },
+        { label: "Suggest other ways", shortcut: "⌘⇧G", run: aiAlternatives },
         {
           label: ghosted ? "Revive" : "Ghost it",
           shortcut: "⌘/",
@@ -786,6 +813,7 @@ export default function App() {
   // Render
 
   const words = info?.words ?? 0;
+  const altPending = suggestionsPending(aiAlt, { open: altOpen, tab, alt: info?.alt?.id });
 
   return (
     <div className={`app${layers ? " layers" : ""}`}>
@@ -832,7 +860,9 @@ export default function App() {
             onFork={fork}
             onClose={closeAlternatives}
             onAi={aiAlternatives}
-            aiBusy={aiBusy === "Suggesting alternatives"}
+            onCancel={cancelAi}
+            aiBusy={aiBusy !== null}
+            aiPending={altPending}
           />
         )}
 
@@ -896,7 +926,7 @@ export default function App() {
           </button>
         </div>
         <div className="toast" aria-live="polite">
-          {toast ?? (aiBusy && panel !== "review" ? `${aiBusy}… (esc cancels)` : null)}
+          {toast ?? aiStatus(aiBusy, panel, altPending)}
         </div>
         <div className="group">
           <button className="icon wide" onClick={openPalette} title="All commands (⌘K)">

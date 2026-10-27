@@ -230,6 +230,10 @@ button:focus-visible {
   .caret.blink {
     animation: none;
   }
+
+  .pending-bar {
+    animation: none;
+  }
 }
 
 .md-h {
@@ -580,8 +584,62 @@ button:focus-visible {
   color: var(--fg-dim);
 }
 
-.fork:hover {
+.fork:not(:disabled):hover {
   color: var(--accent);
+}
+
+.fork:disabled {
+  cursor: default;
+  color: var(--faint);
+}
+
+/* Suggestions on their way: the button says so, and rows wait where they will land. */
+.fork[aria-busy="true"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  color: var(--fg-dim);
+}
+
+.suggest {
+  display: flex;
+  flex-direction: column;
+}
+
+.side-note {
+  margin: 0;
+  padding: 0 6px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.variants li.pending {
+  padding: 4px 6px 4px 22px;
+}
+
+.variants li.pending:hover {
+  background: none;
+}
+
+.pending-bar {
+  width: 75%;
+  height: 0.8em;
+  margin: 0.35em 0;
+  border-radius: 4px;
+  background: var(--line);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.variants li.pending + li.pending .pending-bar {
+  width: 50%;
+  animation-delay: 0.2s;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .overflow {
@@ -1074,8 +1132,7 @@ button:focus-visible {
   color: var(--faint);
 }
 
-.lab-busy,
-.ai-busy {
+.lab-busy {
   display: flex;
   align-items: center;
   gap: 8px;

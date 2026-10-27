@@ -1,4 +1,5 @@
 import { Kind, KINDS } from "../editor/readability";
+import type { AltTab } from "./AltPanel";
 
 /** The right panel's tabs. The panel shows one at a time. */
 export type RightTab = "review" | "overflow";
@@ -27,6 +28,31 @@ export function savedPanel(prefs: { panel?: unknown; overflowOpen?: boolean }): 
 export function toggleKinds(hidden: readonly Kind[], kinds: readonly Kind[]): Kind[] {
   if (kinds.every((k) => hidden.includes(k))) return hidden.filter((k) => !kinds.includes(k));
   return [...hidden, ...kinds.filter((k) => !hidden.includes(k))];
+}
+
+/**
+ * Whether the left panel shows suggestions on their way: its Word or Sentence tab is open on the
+ * alternative the running task fills. `fills` is that alternative's id, null when no task fills one.
+ */
+export function suggestionsPending(fills: string | null, panel: { open: boolean; tab: AltTab; alt: string | undefined }): boolean {
+  return panel.open && panel.tab === "inline" && panel.alt === fills;
+}
+
+/** The toolbar's status for the running task, unless Review or the left panel already shows it. */
+export function aiStatus(running: string | null, panel: RightTab | null, pending: boolean): string | null {
+  return running && panel !== "review" && !pending ? `${running}… (esc cancels)` : null;
+}
+
+/** Esc in the left panel: cancel the running task, or close the panel when nothing runs. */
+export function altPanelEscape(busy: boolean): "cancel" | "close" {
+  return busy ? "cancel" : "close";
+}
+
+/** The left panel's key hints. While suggestions load, the line under the button says Esc cancels. */
+export function altPanelHint(tab: AltTab, busy: boolean, pending: boolean): string {
+  const keys = tab === "inline" ? "return adds · ↑↓ cycles" : "⌘⇧D new version · ⌥⇧J ⌥⇧K cycles";
+  if (pending) return keys;
+  return `${keys} · ${busy ? "esc cancels" : "esc closes"}`;
 }
 
 /** The highlight kinds hidden last time. */

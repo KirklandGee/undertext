@@ -1,6 +1,7 @@
 import { KeyboardEvent, RefObject, useEffect, useState } from "react";
 import { inlineText } from "../editor/format";
 import { EditorInfo } from "../editor/setup";
+import { altPanelEscape, altPanelHint } from "./panels";
 
 export type AltTab = "inline" | "paragraph";
 
@@ -18,9 +19,13 @@ interface Props {
   onParaRemove(index: number): void;
   onFork(): void;
   onClose(): void;
-  /** Ask Claude for alternatives (⌘⇧G). */
+  /** Suggest other ways to say it (⌘⇧G). */
   onAi(): void;
+  /** A task is running, for this panel or anything else. Esc cancels it. */
   aiBusy: boolean;
+  /** The running task is adding suggestions to the alternative shown here. */
+  aiPending: boolean;
+  onCancel(): void;
 }
 
 export function AltPanel(props: Props) {
@@ -36,7 +41,8 @@ export function AltPanel(props: Props) {
       onKeyDown={(e) => {
         if (e.key === "Escape" && !e.defaultPrevented) {
           e.preventDefault();
-          props.onClose();
+          if (altPanelEscape(props.aiBusy) === "cancel") props.onCancel();
+          else props.onClose();
         }
       }}
     >
@@ -54,14 +60,13 @@ export function AltPanel(props: Props) {
 
       {tab === "inline" ? <InlineList {...props} /> : <ParagraphList {...props} />}
 
-      <footer className="side-hint">
-        {tab === "inline" ? "return adds · ↑↓ cycles · esc closes" : "⌘⇧D new version · ⌥⇧J ⌥⇧K cycles · esc closes"}
-      </footer>
+      <footer className="side-hint">{altPanelHint(tab, props.aiBusy, props.aiPending)}</footer>
     </aside>
   );
 }
 
-function InlineList({ info, focusKey, inputRef, onActivate, onAdd, onRemove, onClose, onAi, aiBusy }: Props) {
+function InlineList(props: Props) {
+  const { info, focusKey, inputRef, onActivate, onAdd, onRemove, onClose, onCancel, onAi, aiBusy, aiPending } = props;
   const [value, setValue] = useState("");
   useEffect(() => inputRef.current?.focus(), [focusKey, inputRef]);
   const alt = info.alt;
@@ -80,7 +85,8 @@ function InlineList({ info, focusKey, inputRef, onActivate, onAdd, onRemove, onC
       onActivate((active + (e.key === "ArrowUp" ? -1 : 1) + n) % n);
     } else if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
+      if (altPanelEscape(aiBusy) === "cancel") onCancel();
+      else onClose();
     }
   };
 
@@ -95,7 +101,7 @@ function InlineList({ info, focusKey, inputRef, onActivate, onAdd, onRemove, onC
               <button
                 className="variant"
                 onClick={() => onActivate(i)}
-                title={i === 0 ? "Original" : fromAi(v) ? "Suggested by AI" : undefined}
+                title={i === 0 ? "Original" : fromAi(v) ? "Suggested" : undefined}
               >
                 <span className={`bullet${fromAi(v) ? " ai" : ""}`}>{fromAi(v) ? "○" : i === active ? "•" : "·"}</span>
                 <span className="variant-text">{v}</span>
@@ -107,6 +113,12 @@ function InlineList({ info, focusKey, inputRef, onActivate, onAdd, onRemove, onC
               )}
             </li>
           ))}
+          {aiPending &&
+            [0, 1].map((i) => (
+              <li key={`pending-${i}`} className="pending" aria-hidden="true">
+                <span className="pending-bar" />
+              </li>
+            ))}
         </ul>
       )}
       <input
@@ -119,16 +131,28 @@ function InlineList({ info, focusKey, inputRef, onActivate, onAdd, onRemove, onC
         onKeyDown={onKeyDown}
         spellCheck
       />
-      {variants.length > 0 &&
-        (aiBusy ? (
-          <p className="ai-busy" aria-live="polite">
-            <span className="spinner" aria-hidden="true" /> Asking Claude…
-          </p>
-        ) : (
-          <button className="fork" onClick={onAi}>
-            ✦ Suggest with AI <kbd>⌘⇧G</kbd>
+      {variants.length > 0 && (
+        <div className="suggest" aria-live="polite">
+          <button
+            className="fork"
+            onClick={onAi}
+            disabled={aiBusy}
+            aria-busy={aiPending}
+            title={aiBusy && !aiPending ? "Another task is running. Esc cancels it." : undefined}
+          >
+            {aiPending ? (
+              <>
+                <span className="spinner" aria-hidden="true" /> Finding other ways to say it…
+              </>
+            ) : (
+              <>
+                ✦ Suggest other ways <kbd>⌘⇧G</kbd>
+              </>
+            )}
           </button>
-        ))}
+          {aiPending && <p className="side-note">esc cancels</p>}
+        </div>
+      )}
     </div>
   );
 }

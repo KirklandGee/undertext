@@ -67,7 +67,7 @@ storage, and answers AI requests with fake results so you can try the UI.
 | --- | --- |
 | ⌘K | Command palette: every action available right now, with its shortcut |
 | ⌘⇧A | Alternatives for the word at the cursor or the selection |
-| ⌘⇧G | Ask Claude for alternatives |
+| ⌘⇧G | Suggest other ways to say the word or selection |
 | ⌘⇧E | Review: typo fixes, checks that mark text, and trims. Press again in Review to close it. Esc goes back to the page. |
 | ⌥J ⌥K | Next / previous version at the cursor (word or sentence, else paragraph) |
 | ⌥⇧J ⌥⇧K | Next / previous version of the paragraph |
@@ -154,7 +154,7 @@ your words, becomes an alternative, and ⌥K brings yours back. An adverb, quali
 filler can be ghosted, so you read the sentence without it, or removed. A click on ghosted text
 offers "Remove it" and "Revive it". Removing tidies the spaces, commas, and capital around the
 words, and ⌘Z brings them back. Passive voice, hard sentences, and
-hidden actions with no suggestion offer "Rewrite with Claude": Claude rewrites the sentence to fix
+hidden actions with no suggestion offer "Suggest rewrites": Claude rewrites the sentence to fix
 it, and the rewrites that the checks no longer mark join it as alternatives. Ask again for more.
 Only that button, ⌥↩ on such a mark, or its ⌘K entry sends the paragraph to Claude. ⌥↩ does the first action at
 the cursor, and ⌘K lists it too. Where none fits, say in code or inside an alternative, the popover
@@ -164,6 +164,7 @@ The AI features are optional. They never rewrite your text on their own: every r
 you can see and undo.
 
 - **Alternatives (⌘⇧G):** about 6 suggestions join the word's versions. Your current text stays.
+  While they load, the panel shows where they will land, and Esc cancels.
 - **Find writing issues:** Claude marks grammar, spelling, and wrong words in pink, each with a
   reason and a fix. Review opens to show them. Click one and use its button, or put the caret on it
   and press ⌥↩: the fix becomes an alternative, and ⌥K restores your text. A mark goes away when
