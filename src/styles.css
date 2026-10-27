@@ -845,6 +845,96 @@ button:focus-visible {
   outline: none;
 }
 
+/* The popover on a Review highlight (src/editor/popover.ts). CodeMirror adds .cm-tooltip to it. */
+.cm-editor .hl-pop.cm-tooltip {
+  width: max-content;
+  max-width: 320px;
+  padding: 10px 12px 11px;
+  background: var(--menu);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hl-pop-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--heading);
+  font-weight: 600;
+}
+
+.hl-pop-title::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--hl-weak);
+}
+
+.hl-pop-veryHard::before {
+  background: var(--hl-very-hard);
+}
+
+.hl-pop-hard::before {
+  background: var(--hl-hard);
+}
+
+.hl-pop-simpler::before {
+  background: var(--hl-simpler);
+}
+
+.hl-pop-grammar::before {
+  background: var(--hl-grammar);
+}
+
+.hl-pop-text {
+  margin: 6px 0 0;
+  color: var(--fg-dim);
+}
+
+.hl-pop-why {
+  margin: 8px 0 0;
+  color: var(--faint);
+  font-style: italic;
+}
+
+.hl-pop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.hl-pop-action {
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.hl-pop-action:hover {
+  background: var(--selection);
+}
+
+.hl-pop-action:first-child {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--menu);
+}
+
+.hl-pop-action:first-child:hover {
+  filter: brightness(1.1);
+}
+
+.hl-pop-hint {
+  margin: 8px 0 0;
+  color: var(--faint);
+}
+
 .readability {
   padding: 0 8px 10px;
   outline: none;

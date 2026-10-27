@@ -3,7 +3,7 @@ import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import { parsePage } from "./format";
 import {
-  applyWritingFix,
+  applyFix,
   highlightsField,
   issueAt,
   jumpToIssue,
@@ -47,6 +47,11 @@ describe("live highlights", () => {
 
     state = state.update(setHighlights({ on: false })).state;
     expect(drawn(state)).toEqual([]);
+  });
+
+  it("leave the explaining to the popover: no hover tooltips", () => {
+    const iter = stateFor("She quickly left.\n", true).field(highlightsField).decos.iter();
+    expect(iter.value?.spec).toEqual({ class: "hl hl-adverb" });
   });
 
   it("count an intensifier that is also an adverb as one weakener", () => {
@@ -194,7 +199,7 @@ describe("writing issues from Claude", () => {
 
   it("use a fix as an alternative that keeps the original, and undo it", () => {
     let state = stateFor(TEXT, true).update(setWritingIssues(issues)).state;
-    const spec = applyWritingFix(state, issues[0]);
+    const spec = applyFix(state, issues[0]);
     state = state.update(spec!).state;
     expect(state.doc.toString()).toBe("Long walks can help you relax and do it.");
     expect(pageMarkdown(state, "")).toBe("Long walks can help {{yourself|>~you}} relax and do it.\n");
@@ -211,7 +216,7 @@ describe("writing issues from Claude", () => {
   it("keep a fix's spaces through a save", () => {
     let state = stateFor("We saw the the cat.\n", true);
     const issue: WritingIssue = { from: 7, to: 15, kind: "grammar", note: "A word twice.", fix: "the " };
-    state = state.update(applyWritingFix(state, issue)!).state;
+    state = state.update(applyFix(state, issue)!).state;
     expect(state.doc.toString()).toBe("We saw the cat.");
     const saved = pageMarkdown(state, "");
     expect(saved).toBe("We saw {{the the|>~the}} cat.\n");
@@ -245,26 +250,26 @@ describe("writing issues from Claude", () => {
   it("offer no fix in code, as when the writer added backticks after Claude looked", () => {
     const issue: WritingIssue = { from: 5, to: 8, kind: "grammar", note: "Spelling.", fix: "the" };
     let state = stateFor("Run `teh` now.\n", true).update(setWritingIssues([issue])).state;
-    expect(applyWritingFix(state, issue)).toBeNull();
+    expect(applyFix(state, issue)).toBeNull();
     state = state.update({ selection: EditorSelection.cursor(6) }).state;
     expect(describeEditor(state).checks).toMatchObject({ here: "Spelling.", fix: null });
   });
 
   it("offer no fix that would split its line", () => {
     const state = stateFor("We teh cat.\n", true);
-    expect(applyWritingFix(state, { from: 3, to: 6, kind: "grammar", note: "", fix: "the\rx" })).toBeNull();
-    expect(applyWritingFix(state, { from: 3, to: 6, kind: "grammar", note: "", fix: "the" })).not.toBeNull();
+    expect(applyFix(state, { from: 3, to: 6, kind: "grammar", note: "", fix: "the\rx" })).toBeNull();
+    expect(applyFix(state, { from: 3, to: 6, kind: "grammar", note: "", fix: "the" })).not.toBeNull();
   });
 
   it("offer no fix that would leave a space at a line's end", () => {
     const state = stateFor("We saw it  \n", true);
     expect(state.doc.toString()).toBe("We saw it  ");
-    expect(applyWritingFix(state, { from: 7, to: 11, kind: "grammar", note: "", fix: "it " })).toBeNull();
+    expect(applyFix(state, { from: 7, to: 11, kind: "grammar", note: "", fix: "it " })).toBeNull();
   });
 
   it("don't use a fix over an alternative, or one with nothing to offer", () => {
     const state = stateFor("Long walks can help {{yourself|you}} relax.\n", true);
-    expect(applyWritingFix(state, { from: 20, to: 28, kind: "grammar", note: "", fix: "you" })).toBeNull();
-    expect(applyWritingFix(state, { from: 0, to: 8, kind: "grammar", note: "", fix: "" })).toBeNull();
+    expect(applyFix(state, { from: 20, to: 28, kind: "grammar", note: "", fix: "you" })).toBeNull();
+    expect(applyFix(state, { from: 0, to: 8, kind: "grammar", note: "", fix: "" })).toBeNull();
   });
 });

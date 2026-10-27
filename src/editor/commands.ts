@@ -397,6 +397,17 @@ export const toggleGhost: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
+/**
+ * Ghosts `from`–`to`. Null where any of it is ghosted already, or where it covers only part of an
+ * alternative: such a ghost is lost on save.
+ */
+export function ghostRange(state: EditorState, from: number, to: number): TransactionSpec | null {
+  const l = layersOf(state);
+  if (from >= to || l.ghosts.some((g) => g.from < to && g.to > from)) return null;
+  if (l.alts.some((a) => a.from < to && a.to > from && (a.from < from || a.to > to))) return null;
+  return { effects: setLayers.of({ ...l, ghosts: union([...l.ghosts, { from, to }]) }) };
+}
+
 export function reviveAt(state: EditorState, pos: number): TransactionSpec | null {
   const g = ghostAt(state, pos);
   const l = layersOf(state);

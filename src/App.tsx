@@ -4,6 +4,7 @@ import { MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "reac
 import { AltPanel, AltTab } from "./components/AltPanel";
 import { AiError, aiCancel, aiClearKey, aiKeyStatus, aiSetKey } from "./ai/client";
 import {
+  addRewrites,
   applyFixes,
   CHECKS,
   CheckId,
@@ -12,6 +13,7 @@ import {
   proposeTrim,
   runCheck,
   suggestAlternatives,
+  suggestRewrites,
   TRIMS,
   TrimId,
   wordsIn,
@@ -48,16 +50,16 @@ import {
 } from "./editor/commands";
 import { parsePage } from "./editor/format";
 import {
-  applyWritingFix,
+  applyFix,
   HighlightSettings,
   issueAt,
-  jumpToIssue,
   setHighlights,
   setWritingIssues,
 } from "./editor/highlights";
 import { clearLab, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
 import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layers";
 import { Kind } from "./editor/readability";
+import { jumpToMark, RewriteTarget } from "./editor/popover";
 import { createEditorState, describe, EditorHandlers, EditorInfo, pageMarkdown } from "./editor/setup";
 import {
   askReloadChanged,
@@ -415,7 +417,8 @@ export default function App() {
   const useFix = () => {
     const state = view().state;
     const issue = issueAt(state, state.selection.main.head);
-    if (issue && "fix" in issue) dispatch(applyWritingFix(state, issue));
+    const spec = issue && applyFix(state, issue);
+    if (spec) dispatch(spec);
     view().focus();
   };
 
@@ -532,10 +535,33 @@ export default function App() {
     view().dispatch({ selection: EditorSelection.cursor(pos) });
   };
 
+  /**
+   * Claude's rewrites of a marked sentence, as an alternative's variants, from the popover or ⌥↩.
+   * Only rewrites that fix what the mark is about join it.
+   */
+  const rewrite = ({ from, to, kind, phrase }: RewriteTarget) => {
+    const made = createAlt(view().state, from, to);
+    if (!made) {
+      flash("This text can't become an alternative");
+      return;
+    }
+    view().dispatch({ ...made.spec, selection: EditorSelection.cursor(from) });
+    openAlternatives();
+    void runAi("Rewriting with Claude", async (live) => {
+      const texts = await suggestRewrites(view().state, made.id, kind, phrase);
+      if (!live()) return;
+      const spec = addRewrites(view().state, made.id, kind, texts);
+      if (spec) dispatch(spec);
+      // Each one either kept the issue or repeated a version the sentence has.
+      else flash("No new rewrites that fix it. Try again.");
+    });
+  };
+
   const handlersRef = useRef<EditorHandlers>(null!);
   handlersRef.current = {
     alternatives: openAlternatives,
     aiAlternatives,
+    rewrite,
     lab: () => pressPanel("review"),
     stash,
     fork,
@@ -828,7 +854,7 @@ export default function App() {
             hidden={hidden}
             onToggle={(kinds) => setHidden((h) => toggleKinds(h, kinds))}
             onJump={(kinds) => {
-              dispatch(jumpToIssue(view().state, kinds, 1));
+              dispatch(jumpToMark(view().state, kinds, 1));
               view().focus();
             }}
             onTab={(next) => showPanel(next, true)}

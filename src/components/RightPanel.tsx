@@ -171,7 +171,7 @@ function Readability({ checks, words, hidden, onToggle, onJump, onUseFix }: Prop
           {words > 0 && ` · ${Math.max(1, Math.round(words / 250))} min`}
         </div>
         <p className="hl-here" aria-live="polite">
-          {checks.here ?? "Put the caret on a highlight to see why it's marked."}
+          {checks.here ?? "Click a highlight to see why it's marked."}
           {checks.fix && (
             <button className="hl-fix" onClick={onUseFix} title="Adds the fix as an alternative. ⌥K brings back your text.">
               Use “{checks.fix}”

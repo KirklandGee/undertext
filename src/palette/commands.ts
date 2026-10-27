@@ -156,7 +156,14 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     run: () => actions.setReviewOpen(!ctx.reviewOpen),
   });
   if (info.checks?.fix) {
-    add({ id: "lab.useFix", group: "Review", title: `Use the fix: ${quote(info.checks.fix)}`, keywords: "grammar writing issue apply", run: actions.useFix });
+    add({
+      id: "lab.useFix",
+      group: "Review",
+      title: `Use the fix: ${quote(info.checks.fix)}`,
+      shortcut: "⌥↩",
+      keywords: "grammar writing issue apply suggestion",
+      run: actions.useFix,
+    });
   }
   add({ id: "lab.issues", group: "Review", title: "Find writing issues", keywords: "ai grammar style spelling hemingway", run: actions.findIssues });
   add({ id: "lab.typos", group: "Review", title: "Fix punctuation and typos", keywords: "ai spelling proofread grammar", run: actions.fixTypos });

@@ -185,9 +185,9 @@ describe("weak verbs, hidden actions, and negatives", () => {
       ["hidden", "take into consideration"],
     ]);
     expect(checkPage(text).issues.map((i) => i.note)).toEqual([
-      "Hidden action. Try “decide”.",
-      "Hidden action. Try “agree”.",
-      "Hidden action. Try “consider”.",
+      "Hidden action. Try “decided”.",
+      "Hidden action. Try “agreeing”.",
+      "Hidden action. Try “considered”.",
       "Hidden action. Try “can”.",
       "Hidden action. Try “consider”.",
     ]);
@@ -241,10 +241,10 @@ describe("simpler words", () => {
       ["simpler", "utilized"],
     ]);
     expect(checkPage(text).issues.map((i) => i.note)).toEqual([
-      "Simpler: use.",
+      "Simpler: Use.",
       "Simpler: to.",
       "Simpler: help.",
-      "Simpler: use.",
+      "Simpler: used.",
     ]);
   });
 
@@ -271,7 +271,86 @@ describe("simpler words", () => {
       ["simpler", "Not many"],
       ["simpler", "not often"],
     ]);
-    expect(checkPage(text).issues.map((i) => i.note)).toEqual(["Simpler: few.", "Simpler: rarely."]);
+    expect(checkPage(text).issues.map((i) => i.note)).toEqual(["Simpler: Few.", "Simpler: rarely."]);
+  });
+});
+
+describe("suggestions", () => {
+  /** Each mark that has a suggestion, as its text and the suggestion. */
+  const fixes = (text: string) =>
+    checkPage(text)
+      .issues.filter((i) => i.fix !== undefined)
+      .map((i) => [text.slice(i.from, i.to), i.fix]);
+
+  it("put a hidden action's verb in the phrase's tense and person", () => {
+    expect(fixes("We made a decision. She makes a decision. They are making a decision. We make a decision.")).toEqual([
+      ["made a decision", "decided"],
+      ["makes a decision", "decides"],
+      ["making a decision", "deciding"],
+      ["make a decision", "decide"],
+    ]);
+    expect(fixes("She is in agreement with us. They were in agreement with us. We are in agreement with them.")).toEqual([
+      ["is in agreement with", "agrees with"],
+      ["were in agreement with", "agreed with"],
+      ["are in agreement with", "agree with"],
+    ]);
+  });
+
+  it("tell a past participle from a past tense by the word before it", () => {
+    expect(fixes("She made a choice. She has made a choice. We had knowledge of it. We have had knowledge of it.")).toEqual([
+      ["made a choice", "chose"],
+      ["made a choice", "chosen"],
+      ["had knowledge of", "knew"],
+      ["had knowledge of", "known"],
+    ]);
+    expect(fixes("He has walked carefully. He walked carefully.")).toEqual([
+      ["walked carefully", "trodden"],
+      ["walked carefully", "trod"],
+    ]);
+  });
+
+  it("offer can and could only where they fit", () => {
+    const text =
+      "He is able to swim. He was able to swim. He will be able to swim. She had the ability to sing. She will have the ability to sing.";
+    expect(fixes(text)).toEqual([
+      ["is able to", "can"],
+      ["was able to", "could"],
+      ["had the ability to", "could"],
+    ]);
+    // "Will can" isn't English: the mark stays, with no suggestion.
+    const will = checkPage(text).issues.find((i) => text.slice(i.from, i.to) === "be able to");
+    expect(will).toMatchObject({ kind: "hidden", note: "Hidden action. Use a plain verb." });
+    expect(will?.fix).toBeUndefined();
+  });
+
+  it("put a simpler word in the form of the word it replaces", () => {
+    expect(
+      fixes("We utilized it, utilizing all. She finalizes it. He modified it. They transmitted it. We acquired it. It was acquired."),
+    ).toEqual([
+      ["utilized", "used"],
+      ["utilizing", "using"],
+      ["finalizes", "finishes"],
+      ["modified", "changed"],
+      ["transmitted", "sent"],
+      ["acquired", "got"],
+      ["acquired", "gotten"],
+    ]);
+  });
+
+  it("start a suggestion with a capital where the marked text does", () => {
+    expect(fixes("Utilize it. Not many came. Made a decision.")).toEqual([
+      ["Utilize", "Use"],
+      ["Not many", "Few"],
+      ["Made a decision", "Decided"],
+    ]);
+  });
+
+  it("put the suggestion in the note, and keep negatives as they are", () => {
+    const text = "We made a decision. It does not have one.";
+    expect(checkPage(text).issues.map((i) => [i.note, i.fix])).toEqual([
+      ["Hidden action. Try “decided”.", "decided"],
+      ["Negative. Try “lacks”.", "lacks"],
+    ]);
   });
 });
 

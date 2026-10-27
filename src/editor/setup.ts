@@ -17,11 +17,12 @@ import {
   wordRangeAt,
 } from "./commands";
 import { Layers, MARKDOWN_EXTENSIONS, serializePage } from "./format";
-import { applyWritingFix, highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
+import { applyFix, highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
 import { inkLayers } from "./ink";
 import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
 import { layers, layersField, layersOf } from "./layers";
+import { popover, RewriteTarget } from "./popover";
 import { livePreview } from "./preview";
 import { Kind, KINDS } from "./readability";
 
@@ -32,6 +33,8 @@ export interface EditorHandlers {
   stash(): void;
   fork(): void;
   escape(): boolean;
+  /** Claude's rewrites of a marked sentence, from the popover. */
+  rewrite(target: RewriteTarget): void;
 }
 
 /** ⌘/ on a proposed cut keeps the text. Anywhere else it ghosts or revives. */
@@ -102,7 +105,7 @@ export function createEditorState(
   handlers?: () => EditorHandlers,
   checks?: HighlightSettings,
 ): EditorState {
-  const call = (fn: keyof EditorHandlers) => () => {
+  const call = (fn: Exclude<keyof EditorHandlers, "rewrite">) => () => {
     if (!handlers) return false;
     return handlers()[fn]() !== false;
   };
@@ -119,6 +122,7 @@ export function createEditorState(
       layers(initial),
       lab,
       highlights(checks),
+      popover(handlers && ((target) => handlers().rewrite(target))),
       livePreview,
       inkLayers,
       clipboard,
@@ -242,7 +246,7 @@ export function describe(state: EditorState): EditorInfo {
     for (const i of [...report.issues, ...(writing ?? [])]) counts[i.kind] += 1;
     const at = issueAt(state, state.selection.main.head);
     // No fix to offer where it can't apply, such as over an alternative.
-    const fix = at && "fix" in at && applyWritingFix(state, at) ? at.fix : null;
+    const fix = at?.fix && applyFix(state, at) ? at.fix : null;
     checks = {
       grade: report.grade,
       sentences: report.sentences,

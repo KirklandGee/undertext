@@ -28,6 +28,8 @@ export interface Issue {
   kind: Kind;
   /** Why it's marked, e.g. "Very hard to read. 38 words." */
   note: string;
+  /** Text that could replace it, in its form and case, e.g. "strolled" for "walked slowly". */
+  fix?: string;
 }
 
 export interface Report {
@@ -214,25 +216,74 @@ const SIMPLER: Record<string, string> = {
   utilise: "use", utilization: "use", utilize: "use", "with regard to": "about", "with respect to": "about",
 };
 
-/** Verbs whose forms don't follow the rule in `verbForms`: -s, past, -ing, and past participle. */
+/** Verbs whose forms don't follow the rules in `verbForms`: -s, past, -ing, and past participle. */
 const IRREGULAR_VERBS: Record<string, string> = {
-  carry: "carries carried carrying carried", come: "comes came coming come", creep: "creeps crept creeping crept",
-  drink: "drinks drank drinking drunk", eat: "eats ate eating eaten", give: "gives gave giving given",
-  have: "has had having had", hurry: "hurries hurried hurrying hurried", make: "makes made making made",
-  reach: "reaches reached reaching reached", run: "runs ran running run", rush: "rushes rushed rushing rushed",
-  say: "says said saying said", slam: "slams slammed slamming slammed", snap: "snaps snapped snapping snapped",
-  speak: "speaks spoke speaking spoken", take: "takes took taking taken", tiptoe: "tiptoes tiptoed tiptoeing tiptoed",
-  tread: "treads trod treading trodden",
+  agree: "agrees agreed agreeing agreed", build: "builds built building built", buy: "buys bought buying bought",
+  choose: "chooses chose choosing chosen", come: "comes came coming come", creep: "creeps crept creeping crept",
+  cut: "cuts cut cutting cut", do: "does did doing done", drink: "drinks drank drinking drunk",
+  eat: "eats ate eating eaten", find: "finds found finding found", get: "gets got getting gotten",
+  give: "gives gave giving given", have: "has had having had", keep: "keeps kept keeping kept",
+  know: "knows knew knowing known", make: "makes made making made", pay: "pays paid paying paid",
+  run: "runs ran running run", say: "says said saying said", send: "sends sent sending sent",
+  show: "shows showed showing shown", slam: "slams slammed slamming slammed", snap: "snaps snapped snapping snapped",
+  speak: "speaks spoke speaking spoken", speed: "speeds sped speeding sped", take: "takes took taking taken",
+  tiptoe: "tiptoes tiptoed tiptoeing tiptoed", tread: "treads trod treading trodden",
 };
 
 /** A verb's base, -s, past, -ing, and past participle forms. */
 function verbForms(base: string): string[] {
   const irregular = IRREGULAR_VERBS[base];
   if (irregular) return [base, ...irregular.split(" ")];
-  const past = base.endsWith("e") ? `${base}d` : `${base}ed`;
-  return [base, `${base}s`, past, `${base.replace(/e$/, "")}ing`, past];
+  const y = /[^aeiou]y$/.test(base) ? base.slice(0, -1) : null;
+  const s = y ? `${y}ies` : /(?:s|x|z|ch|sh)$/.test(base) ? `${base}es` : `${base}s`;
+  const past = y ? `${y}ied` : base.endsWith("e") ? `${base}d` : `${base}ed`;
+  const ing = /[^e]e$/.test(base) ? `${base.slice(0, -1)}ing` : `${base}ing`;
+  return [base, s, past, ing, past];
 }
-const BE = ["am", "is", "are", "was", "were", "be", "been", "being"];
+
+/**
+ * What a verb form can be. "Present" is "am" and "are"; "inf" is "be", as after "will". A plain
+ * base form is either.
+ */
+type Role = "base" | "present" | "inf" | "s" | "past" | "ing" | "pp";
+const FORM_ROLES: Role[] = ["base", "s", "past", "ing", "pp"];
+const BE_ROLES: Record<string, Role> = { am: "present", is: "s", are: "present", was: "past", were: "past", be: "inf", been: "pp", being: "ing" };
+const BE = Object.keys(BE_ROLES);
+
+/** A phrase's plainer words, and what form the phrase's verb can be. */
+interface Swap {
+  plain: string;
+  roles: Role[];
+}
+const addSwap = (map: Map<string, Swap>, phrase: string, plain: string, role: Role) => {
+  const swap = map.get(phrase);
+  if (swap) swap.roles.push(role);
+  else map.set(phrase, { plain, roles: [role] });
+};
+
+/** A participle follows these, as in "has made" or "was acquired". */
+const BEFORE_PARTICIPLE = /(?<![\p{L}'’])(?:has|have|had|having|am|is|are|was|were|be|been|being)\s+$/iu;
+/** A plain infinitive follows these, as in "will make". */
+const BEFORE_INFINITIVE = /(?<![\p{L}'’])(?:to|will|would|can|could|may|might|must|shall|should|do|does|did)\s+$/iu;
+
+/** The form the matched verb has here, from the words before it. A form listed as past comes before its participle. */
+function roleHere(roles: Role[], before: string): Role {
+  if (roles.includes("pp") && BEFORE_PARTICIPLE.test(before)) return "pp";
+  if (roles.includes("base") && BEFORE_INFINITIVE.test(before)) return "inf";
+  return roles[0];
+}
+
+/** The plainer words in a form. Null where "can" has no such form, as in "will can". */
+function inflect(plain: string, role: Role): string | null {
+  const [verb, ...rest] = plain.split(" ");
+  const tail = rest.length ? ` ${rest.join(" ")}` : "";
+  if (verb === "can") {
+    const modal = { present: "can", s: "can", base: "can", past: "could" }[role as string];
+    return modal ? modal + tail : null;
+  }
+  const f = verbForms(verb);
+  return { base: f[0], present: f[0], inf: f[0], s: f[1], past: f[2], ing: f[3], pp: f[4] }[role] + tail;
+}
 
 // Weak verbs: a plain verb and an adverb that one stronger verb replaces, as in "walked slowly".
 const WEAK_PAIRS =
@@ -241,15 +292,11 @@ const WEAK_PAIRS =
   "drink quickly: gulp, say loudly: shout, say softly: murmur, say quietly: whisper, say angrily: snap, " +
   "speak loudly: shout, speak softly: whisper, speak quietly: whisper, talk loudly: shout, talk quietly: whisper, " +
   "close loudly: slam, laugh loudly: guffaw, laugh quietly: chuckle";
-/** "walked slowly" → "strolled": the stronger verb, in the same form. */
-const WEAK_VERB_FORMS = new Map<string, string>();
+/** "walked slowly" → "stroll", put in the same form where it's marked. */
+const WEAK_VERB_FORMS = new Map<string, Swap>();
 for (const pair of WEAK_PAIRS.split(", ")) {
   const [, verb, adverb, stronger] = pair.match(/^(\S+) (\S+): (\S+)$/)!;
-  const strong = verbForms(stronger);
-  verbForms(verb).forEach((form, i) => {
-    // "Run" is the base and the participle: the base wins.
-    if (!WEAK_VERB_FORMS.has(`${form} ${adverb}`)) WEAK_VERB_FORMS.set(`${form} ${adverb}`, strong[i]);
-  });
+  verbForms(verb).forEach((form, i) => addSwap(WEAK_VERB_FORMS, `${form} ${adverb}`, stronger, FORM_ROLES[i]));
 }
 const WEAK_VERBS = phrases([...WEAK_VERB_FORMS.keys()]);
 
@@ -262,10 +309,11 @@ const HIDDEN_ACTIONS =
   "have the ability to: can, be able to: can, be in agreement with: agree with, have knowledge of: know, " +
   "make an announcement: announce, carry out a review: review, be dependent on: depend on, " +
   "be indicative of: indicate";
-const HIDDEN_FORMS = new Map<string, string>();
+const HIDDEN_FORMS = new Map<string, Swap>();
 for (const action of HIDDEN_ACTIONS.split(", ")) {
   const [, verb, rest, plain] = action.match(/^(\S+) (.+): (.+)$/)!;
-  for (const form of verb === "be" ? BE : verbForms(verb)) HIDDEN_FORMS.set(`${form} ${rest}`, plain);
+  if (verb === "be") for (const form of BE) addSwap(HIDDEN_FORMS, `${form} ${rest}`, plain, BE_ROLES[form]);
+  else verbForms(verb).forEach((form, i) => addSwap(HIDDEN_FORMS, `${form} ${rest}`, plain, FORM_ROLES[i]));
 }
 const HIDDEN = phrases([...HIDDEN_FORMS.keys()]);
 
@@ -291,18 +339,24 @@ for (const [verb, plain] of Object.entries(NEGATED_VERBS)) {
 }
 const NEGATIVE = phrases([...NEGATIVE_FORMS.keys()]);
 
-/** A word's forms, and some that don't exist, which never match. */
-function forms(word: string): string[] {
-  if (word.includes(" ")) return [word];
-  if (word.endsWith("e")) return [word, `${word}s`, `${word}d`, `${word.slice(0, -1)}ing`];
-  if (/[^aeiou]y$/.test(word)) return [word, `${word.slice(0, -1)}ies`, `${word.slice(0, -1)}ied`, `${word}ing`];
-  const out = [word, `${word}s`, `${word}es`, `${word}ed`, `${word}ing`];
+/** A word's forms and what each can be, and some that don't exist, which never match. */
+function forms(word: string): [string, Role[]][] {
+  if (word.includes(" ")) return [[word, ["base"]]];
+  const ed: Role[] = ["past", "pp"];
+  if (word.endsWith("e")) return [[word, ["base"]], [`${word}s`, ["s"]], [`${word}d`, ed], [`${word.slice(0, -1)}ing`, ["ing"]]];
+  if (/[^aeiou]y$/.test(word)) {
+    const stem = word.slice(0, -1);
+    return [[word, ["base"]], [`${stem}ies`, ["s"]], [`${stem}ied`, ed], [`${word}ing`, ["ing"]]];
+  }
+  const out: [string, Role[]][] = [[word, ["base"]], [`${word}s`, ["s"]], [`${word}es`, ["s"]], [`${word}ed`, ed], [`${word}ing`, ["ing"]]];
   // One vowel before the last consonant may double it: transmit, transmitted.
-  if (/[^aeiou][aeiou][bdgklmnprt]$/.test(word)) out.push(`${word}${word.at(-1)}ed`, `${word}${word.at(-1)}ing`);
+  if (/[^aeiou][aeiou][bdgklmnprt]$/.test(word)) out.push([`${word}${word.at(-1)}ed`, ed], [`${word}${word.at(-1)}ing`, ["ing"]]);
   return out;
 }
 
-const SIMPLER_FORMS = new Map(Object.entries(SIMPLER).flatMap(([word, plain]) => forms(word).map((f) => [f, plain])));
+const SIMPLER_FORMS = new Map<string, Swap>(
+  Object.entries(SIMPLER).flatMap(([word, plain]) => forms(word).map(([f, roles]) => [f, { plain, roles }])),
+);
 const SIMPLER_WORDS = phrases([...SIMPLER_FORMS.keys()]);
 
 const ADVERB = /(?<![\p{L}\p{N}'’-])\p{L}+ly(?![\p{L}\p{N}'’-])/giu;
@@ -341,26 +395,35 @@ const NOTES: Record<"adverb" | "passive" | "qualifier" | "intensifier" | "filler
   filler: "Filler. It adds words, not meaning.",
 };
 
+/** Starts with a capital where the marked text does. */
+const matchCase = (fix: string, marked: string) => (/^\p{Lu}/u.test(marked) ? fix[0].toUpperCase() + fix.slice(1) : fix);
+
 /**
  * Marks in one block. Weakeners and simpler words never overlap each other. Adverbs and passive voice
  * may: "really" is an intensifier and an adverb, as Hemingway counts it.
  */
 function wordIssues(text: string): { issues: Issue[]; weakeners: number } {
   const candidates: Issue[] = [];
-  const add = (re: RegExp, kind: Kind, note: (match: string) => string | null) => {
-    for (const m of text.matchAll(re)) {
-      const n = note(m[0]);
-      if (n) candidates.push({ from: m.index, to: m.index + m[0].length, kind, note: n });
-    }
+  const add = (re: RegExp, kind: Kind, mark: (m: RegExpExecArray) => Pick<Issue, "note" | "fix">) => {
+    for (const m of text.matchAll(re)) candidates.push({ from: m.index, to: m.index + m[0].length, kind, ...mark(m) });
+  };
+  /** The plainer words, in the form and case of the marked ones. */
+  const swap = (map: Map<string, Swap>, note: (fix: string) => string) => (m: RegExpExecArray) => {
+    const { plain, roles } = map.get(key(m[0]))!;
+    const fix = inflect(plain, roleHere(roles, text.slice(Math.max(0, m.index - 12), m.index)));
+    return fix === null ? { note: "Hidden action. Use a plain verb." } : { note: note(matchCase(fix, m[0])), fix: matchCase(fix, m[0]) };
   };
   // Earlier in the list wins when two start at the same place and have the same length.
-  add(FILLERS, "filler", () => NOTES.filler);
-  add(QUALIFIERS, "qualifier", () => NOTES.qualifier);
-  add(INTENSIFIERS, "intensifier", () => NOTES.intensifier);
-  add(HIDDEN, "hidden", (m) => `Hidden action. Try “${HIDDEN_FORMS.get(key(m))}”.`);
-  add(NEGATIVE, "negative", (m) => `Negative. Try “${NEGATIVE_FORMS.get(key(m))}”.`);
-  add(WEAK_VERBS, "weakVerb", (m) => `Weak verb. Try “${WEAK_VERB_FORMS.get(key(m))}”.`);
-  add(SIMPLER_WORDS, "simpler", (m) => `Simpler: ${SIMPLER_FORMS.get(key(m))}.`);
+  add(FILLERS, "filler", () => ({ note: NOTES.filler }));
+  add(QUALIFIERS, "qualifier", () => ({ note: NOTES.qualifier }));
+  add(INTENSIFIERS, "intensifier", () => ({ note: NOTES.intensifier }));
+  add(HIDDEN, "hidden", swap(HIDDEN_FORMS, (fix) => `Hidden action. Try “${fix}”.`));
+  add(NEGATIVE, "negative", (m) => {
+    const fix = matchCase(NEGATIVE_FORMS.get(key(m[0]))!, m[0]);
+    return { note: `Negative. Try “${fix}”.`, fix };
+  });
+  add(WEAK_VERBS, "weakVerb", swap(WEAK_VERB_FORMS, (fix) => `Weak verb. Try “${fix}”.`));
+  add(SIMPLER_WORDS, "simpler", swap(SIMPLER_FORMS, (fix) => `Simpler: ${fix}.`));
   candidates.sort((a, b) => a.from - b.from || b.to - a.to);
 
   const kept: Issue[] = [];

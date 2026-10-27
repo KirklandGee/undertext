@@ -72,6 +72,7 @@ storage, and answers AI requests with fake results so you can try the UI.
 | ⌥J ⌥K | Next / previous version at the cursor (word or sentence, else paragraph) |
 | ⌥⇧J ⌥⇧K | Next / previous version of the paragraph |
 | ⌥L ⌥H | Jump to the next / previous item that has versions (or a mark or cut from a Review check) |
+| ⌥↩ | Do what the Review highlight at the cursor suggests: use the suggestion, ghost the word, or ask Claude for rewrites |
 | hover + ↑ ↓ | Cycle the hovered word, sentence, or paragraph |
 | ⌘⇧D | New version of the current paragraph |
 | ⌘/ | Ghost the selection, or revive the ghost at the cursor |
@@ -141,22 +142,29 @@ update as you type.
 - **Grade:** the Automated Readability Index of the page. It also shows in the top bar.
 - **Hard and very hard sentences** (yellow and red): 14 words or more, from grade 10 or 14.
 - **Weakeners** (blue): adverbs, passive voice, qualifiers, intensifiers, weak verbs (walked slowly
-  → strolled), fillers, hidden actions (made a decision → decide), and negatives (does not have →
+  → strolled), fillers, hidden actions (made a decision → decided), and negatives (does not have →
   lacks). The lists follow what Hemingway marks.
 - **Simpler words** (green): utilize → use, in order to → to.
 - **Writing issues** (pink): grammar, spelling, and wrong words, from Claude. See below.
-- Click a row to go to the next one. The eye hides a kind on the page but keeps its count. Put the
-  caret on a highlight to read why it's marked. Ghosted text and code aren't checked. The rules are
-  for English.
+- Click a row to go to the next one. The eye hides a kind on the page but keeps its count. Ghosted
+  text and code aren't checked. The rules are for English.
+
+**Click a highlight** to see why it's marked and what to do. A suggestion, in the form and case of
+your words, becomes an alternative, and ⌥K brings yours back. An adverb, qualifier, intensifier, or
+filler can be ghosted, so you read the sentence without it. Passive voice and hard sentences offer
+"Rewrite with Claude": Claude rewrites the sentence to fix it, and the rewrites that the checks no
+longer mark join it as alternatives. Ask again for more. ⌥↩ does the first of these at the cursor.
+Where none fits, say in code or inside an alternative, the popover says why. It closes when you
+type, move off the mark, or press Esc.
 
 The AI features are optional. They never rewrite your text on their own: every result is something
 you can see and undo.
 
 - **Alternatives (⌘⇧G):** about 6 suggestions join the word's versions. Your current text stays.
 - **Find writing issues:** Claude marks grammar, spelling, and wrong words in pink, each with a
-  reason and a fix. Review opens to show them. Put the caret on one and choose "Use" in Review, or
-  "Use the fix" in ⌘K: the fix becomes an alternative, and ⌥K restores your text. A mark goes away
-  when you edit its text. Code is left alone.
+  reason and a fix. Review opens to show them. Click one, or put the caret on it and press ⌥↩: the
+  fix becomes an alternative, and ⌥K restores your text. A mark goes away when you edit its text.
+  Code is left alone.
 - **Fix punctuation and typos:** each fix becomes an alternative with the fix active. ⌥K restores
   your text.
 - **Checks:** weakest sentences, convoluted sentences, off-tone words, and hedges and filler. Marks

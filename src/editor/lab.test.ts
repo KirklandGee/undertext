@@ -1,9 +1,10 @@
 import { redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
-import { applyFixes, longSentences, narrowChange, writingIssuesFrom } from "../ai/tasks";
+import { addRewrites, applyFixes, longSentences, narrowChange, rewritePrompt, writingIssuesFrom } from "../ai/tasks";
 import { matchScore, rank } from "../palette/match";
 import { buildCommands, GROUPS, PaletteCommand, PaletteContext } from "../palette/commands";
+import { createAlt, findAlt } from "./commands";
 import { parsePage } from "./format";
 import { setHighlights, setWritingIssues } from "./highlights";
 import { ghostLabSpans, labSpans, makeCuts, setLab } from "./lab";
@@ -124,6 +125,60 @@ describe("AI results on the page", () => {
       { from: 58, to: 61, kind: "grammar", note: "One.", fix: "dog" },
       { from: 70, to: 73, kind: "grammar", note: "Two.", fix: "dog" },
     ]);
+  });
+
+  it("keeps only Claude's rewrites that fix the mark, as no passive voice left", () => {
+    // The answer one real run gave for "Rewrite with Claude" on this sentence's passive voice.
+    const answer = [
+      "The door was shut quickly.",
+      "Someone quickly closed the door.",
+      "The door swung shut.",
+      "The door was slammed shut.",
+      "The door was hastily pulled closed.",
+      "In an instant, the door was shut.",
+    ];
+    let state = stateFor("The door was quickly closed.\n");
+    const made = createAlt(state, 0, 28)!;
+    state = state.update(made.spec).state;
+    state = state.update(addRewrites(state, made.id, "passive", answer)!).state;
+    expect(findAlt(state, made.id)!.variants).toEqual([
+      "The door was quickly closed.",
+      "Someone quickly closed the door.",
+      "The door swung shut.",
+    ]);
+    expect(addRewrites(state, made.id, "passive", ["It was shut.", "The door was closed."])).toBeNull();
+
+    // A rewrite of a very hard sentence that is still hard doesn't fix it either.
+    // 20 words, 99 letters: grade 12, hard.
+    const hard =
+      "Writers often build long sentences because each new idea wants another clause before the reader can pause or rest here.";
+    state = state.update(addRewrites(state, made.id, "veryHard", [hard, "Writers pile on clauses. Readers need a rest."])!).state;
+    expect(findAlt(state, made.id)!.variants.slice(3)).toEqual(["Writers pile on clauses. Readers need a rest."]);
+  });
+
+  it("tells Claude the goal, the words the checks flagged, and the rewrites the writer has", () => {
+    // "The door was quickly closed by the wind that came in." at 16–69.
+    let state = stateFor("She left early. The door was quickly closed by the wind that came in.\n");
+    const made = createAlt(state, 16, 69)!;
+    state = state.update(made.spec).state;
+    const passive = rewritePrompt(state, made.id, "passive", "was quickly closed")!;
+    expect(passive.system).toContain("Put it in the active voice: name who or what acts.");
+    expect(passive.system).toContain("The checks flagged “was quickly closed” as passive voice.");
+    expect(passive.prompt).toBe(
+      "Paragraph:\nShe left early. ⟦The door was quickly closed by the wind that came in.⟧\n\n" +
+        "Rewrites the writer has already: none.\n\nSuggest 6 rewrites of the marked text.",
+    );
+    // A hard sentence is flagged as a whole, so there is no phrase to name.
+    const hard = rewritePrompt(state, made.id, "hard", "The door was quickly closed by the wind that came in.")!;
+    expect(hard.system).toContain("Make it easier to read");
+    expect(hard.system).not.toContain("flagged");
+
+    state = stateFor("{{The door was closed.|Someone closed the door.}}\n");
+    const alt = layersOf(state).alts[0];
+    expect(rewritePrompt(state, alt.id, "passive", "was closed")!.prompt).toBe(
+      "Paragraph:\n⟦The door was closed.⟧\n\nRewrites the writer has already: “Someone closed the door.”.\n\n" +
+        "Suggest 6 rewrites of the marked text.",
+    );
   });
 
   it("finds long sentences without AI", () => {

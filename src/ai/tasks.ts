@@ -1,9 +1,10 @@
 import { EditorState, TransactionSpec } from "@codemirror/state";
-import { blockAt, countWords, findAlt, syncedVariants } from "../editor/commands";
+import { addAiAlternatives, blockAt, countWords, findAlt, syncedVariants } from "../editor/commands";
 import { Alt, newId } from "../editor/format";
 import { fitFix, touchesCode, WritingIssue } from "../editor/highlights";
 import { LabSpan } from "../editor/lab";
 import { layersOf, mapLayers, setLayers } from "../editor/layers";
+import { checkPage, Kind } from "../editor/readability";
 import { callClaude } from "./client";
 
 // Each Lab feature is one Claude call with a JSON answer. Claude quotes the
@@ -384,6 +385,77 @@ export function writingIssuesFrom(state: EditorState, answers: WritingAnswer[]):
     issues.push({ from, to, kind: "grammar", note: a.reason, fix: change ? change.fixed : a.replace });
   }
   return issues.sort((x, y) => x.from - y.from);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Rewrites of a marked sentence, from Review's popover
+
+/** What a rewrite must fix, by the kind of mark it is for. */
+const REWRITE_GOALS: Partial<Record<Kind, string>> = {
+  passive:
+    "Put it in the active voice: name who or what acts. If the paragraph doesn't say who acts, choose a " +
+    "fitting subject, or recast the sentence so its subject acts, as in “The door swung shut”.",
+  hard: "Make it easier to read: fewer words, plainer words, or two sentences.",
+  veryHard: "Make it easier to read: fewer words, plainer words, or two sentences.",
+  hidden: "Use a plain verb in place of the noun that hides the action, as “decided” for “made a decision”.",
+};
+
+/** How the prompt names each kind of mark. */
+const MARK_NAMES: Partial<Record<Kind, string>> = { passive: "passive voice", hidden: "a hidden action" };
+
+/**
+ * What Claude is asked for a rewrite of the alternative `altId`: the paragraph with it marked, the
+ * goal, the words the checks flagged when they are only part of it, and the rewrites it has.
+ */
+export function rewritePrompt(state: EditorState, altId: string, kind: Kind, phrase: string): { system: string; prompt: string } | null {
+  const r = findAlt(state, altId);
+  const block = r ? blockAt(state, r.from) : null;
+  if (!r || !block) return null;
+  const para = state.doc.sliceString(block.from, block.to);
+  const a = r.from - block.from;
+  const b = r.to - block.from;
+  const marked = `${para.slice(0, a)}⟦${para.slice(a, b)}⟧${para.slice(b)}`;
+  const flagged = MARK_NAMES[kind] && phrase !== para.slice(a, b) ? ` The checks flagged “${phrase}” as ${MARK_NAMES[kind]}.` : "";
+  const others = syncedVariants(state, r).filter((v) => v !== para.slice(a, b));
+  return {
+    system:
+      `${VOICE} Rewrite the part of the writer's paragraph marked with ⟦ ⟧. ${REWRITE_GOALS[kind] ?? ""}${flagged} ` +
+      "Keep its meaning, facts, and tone, and add nothing new. Each rewrite replaces the marked text on its own, " +
+      "on one line. Make them differ from each other, and from the rewrites the writer has already.",
+    prompt:
+      `Paragraph:\n${marked}\n\nRewrites the writer has already: ${others.length ? others.map((v) => `“${v}”`).join(", ") : "none"}.\n\n` +
+      "Suggest 6 rewrites of the marked text.",
+  };
+}
+
+/** Claude's rewrites of the marked text, aimed at what the mark is about. */
+export async function suggestRewrites(state: EditorState, altId: string, kind: Kind, phrase: string): Promise<string[]> {
+  const ask = rewritePrompt(state, altId, kind, phrase);
+  if (!ask) return [];
+  const answer = await callClaude<{ rewrites: string[] }>(
+    {
+      ...ask,
+      schema: object({ rewrites: list(str) }),
+      effort: "low",
+      maxTokens: 8000,
+    },
+    () => ({ rewrites: ["Someone closed it.", "It was closed.", "It swung shut."] }),
+  );
+  return answer.rewrites;
+}
+
+/** Whether a text still has the issue a mark was about. Hard and very hard count as one. */
+function stillHas(kind: Kind, text: string): boolean {
+  const sentence = (k: Kind) => k === "hard" || k === "veryHard";
+  return checkPage(text).issues.some((i) => i.kind === kind || (sentence(kind) && sentence(i.kind)));
+}
+
+/**
+ * Adds Claude's rewrites to the alternative, keeping only those the live checks no longer mark the
+ * same way: a rewrite of passive voice with passive voice left is dropped. Null when none is left.
+ */
+export function addRewrites(state: EditorState, altId: string, kind: Kind, texts: string[]): TransactionSpec | null {
+  return addAiAlternatives(state, altId, texts.filter((t) => !stillHas(kind, t)));
 }
 
 // ---------------------------------------------------------------------------

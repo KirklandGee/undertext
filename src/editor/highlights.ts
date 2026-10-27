@@ -33,14 +33,14 @@ const OFF: HighlightSettings = { on: false, hidden: [] };
 const settingsEffect = StateEffect.define<Partial<HighlightSettings>>();
 const writingEffect = StateEffect.define<WritingIssue[] | null>();
 
-// One decoration per kind and note, so a keystroke builds no new ones.
+// One decoration per kind, so a keystroke builds no new ones. A click on a mark explains it, in
+// the popover (src/editor/popover.ts).
 const marks = new Map<string, Decoration>();
 function markFor(issue: Issue): Decoration {
-  const key = `${issue.kind}\n${issue.note}`;
-  let mark = marks.get(key);
+  let mark = marks.get(issue.kind);
   if (!mark) {
-    mark = Decoration.mark({ class: `hl hl-${issue.kind}`, attributes: { title: issue.note } });
-    marks.set(key, mark);
+    mark = Decoration.mark({ class: `hl hl-${issue.kind}` });
+    marks.set(issue.kind, mark);
   }
   return mark;
 }
@@ -117,39 +117,50 @@ export function writingIssues(state: EditorState): WritingIssue[] | null {
   return state.field(highlightsField, false)?.writing ?? null;
 }
 
-/**
- * The mark at `pos` that shows, while Review is open: a writing issue first, as it has a fix, then
- * a marked word, then the sentence around it.
- */
-export function issueAt(state: EditorState, pos: number): Issue | WritingIssue | null {
+/** The marks on the page while Review is open, writing issues first, without hidden kinds. */
+export function shownIssues(state: EditorState): Issue[] {
   const h = state.field(highlightsField, false);
-  if (!h?.on) return null;
-  const here = [...(h.writing ?? []), ...h.report.issues].filter(
-    (i) => i.from <= pos && pos <= i.to && !h.hidden.includes(i.kind),
-  );
-  return here.find((i) => i.kind !== "hard" && i.kind !== "veryHard") ?? here[0] ?? null;
+  if (!h?.on) return [];
+  return [...(h.writing ?? []), ...h.report.issues].filter((i) => !h.hidden.includes(i.kind));
 }
 
-/** Moves the caret to the next or previous shown mark of these kinds, in mid-window. Null when there is none. */
-export function jumpToIssue(state: EditorState, kinds: readonly Kind[], dir: 1 | -1): TransactionSpec | null {
-  const h = state.field(highlightsField, false);
-  if (!h?.on) return null;
-  const list = [...h.report.issues, ...(h.writing ?? [])]
-    .filter((i) => kinds.includes(i.kind) && !h.hidden.includes(i.kind))
+/**
+ * The mark at `pos` that shows, while Review is open: a writing issue first, as it has a fix, then
+ * the shortest marked word or phrase, then the sentence around it.
+ */
+export function issueAt(state: EditorState, pos: number): Issue | null {
+  const here = shownIssues(state).filter((i) => i.from <= pos && pos <= i.to);
+  const words = here.filter((i) => i.kind !== "hard" && i.kind !== "veryHard");
+  const shortest = words.reduce<Issue | null>((a, b) => (a && a.to - a.from <= b.to - b.from ? a : b), null);
+  return here.find((i) => i.kind === "grammar") ?? shortest ?? here[0] ?? null;
+}
+
+/** The next or previous shown mark of these kinds from the caret, wrapping around. */
+export function nextIssue(state: EditorState, kinds: readonly Kind[], dir: 1 | -1): Issue | null {
+  const list = shownIssues(state)
+    .filter((i) => kinds.includes(i.kind))
     .sort((a, b) => a.from - b.from);
   if (!list.length) return null;
   const head = state.selection.main.head;
   let index = dir > 0 ? list.findIndex((i) => i.from > head) : list.findLastIndex((i) => i.from < head);
   if (index < 0) index = dir > 0 ? 0 : list.length - 1;
-  const at = list[index].from;
-  return { selection: EditorSelection.cursor(at), effects: EditorView.scrollIntoView(at, { y: "center" }) };
+  return list[index];
+}
+
+/** Moves the caret to the next or previous shown mark of these kinds, in mid-window. Null when there is none. */
+export function jumpToIssue(state: EditorState, kinds: readonly Kind[], dir: 1 | -1): TransactionSpec | null {
+  const issue = nextIssue(state, kinds, dir);
+  if (!issue) return null;
+  return { selection: EditorSelection.cursor(issue.from), effects: EditorView.scrollIntoView(issue.from, { y: "center" }) };
 }
 
 const CODE = ["InlineCode", "FencedCode", "CodeBlock"];
 /** What may come before a line's first word: indent, quote markers, and list markers. */
-const LINE_LEAD = /^(?:[ \t]*(?:>|(?:[-*+]|\d{1,9}[.)])(?=[ \t])))*[ \t]*$/;
+const LINE_LEAD = /^(?:[ \t]*(?:>|(?:[-*+]|\d{1,9}[.)])(?=[ \t])))*[ \t]*/;
+/** How many characters of `text` are indent, quote markers, and list markers. */
+export const leadLength = (text: string) => LINE_LEAD.exec(text)![0].length;
 /** Text that would make a block of its own at the start of a line. */
-const BLOCK_START = /^(?:[#>*+=_|<~-]|\d+[.)])/;
+export const BLOCK_START = /^(?:[#>*+=_|<~-]|\d+[.)])/;
 
 /** Whether `from`–`to` touches code. An alternative there would be saved as literal text. */
 export function touchesCode(state: EditorState, from: number, to: number): boolean {
@@ -200,7 +211,7 @@ export function fitFix(state: EditorState, from: number, to: number, fix: string
   const edge = (s: string) => !s.trim() || s !== s.trim();
   if (edge(original) || edge(insert) || original === insert) return null;
   if (/`/.test(original + insert)) return null;
-  if (LINE_LEAD.test(text.slice(0, a)) && [original, insert].some((s) => BLOCK_START.test(s))) return null;
+  if (leadLength(text) >= a && [original, insert].some((s) => BLOCK_START.test(s))) return null;
   const range = { from: line.from + a, to: line.from + b };
   const cuts = (r: { from: number; to: number }) => r.from < range.to && r.to > range.from;
   const l = layersOf(state);
@@ -210,10 +221,10 @@ export function fitFix(state: EditorState, from: number, to: number, fix: string
 }
 
 /**
- * Uses a writing issue's fix as an alternative, with the fix active and the original kept, as typo
- * fixes do. Null when the issue has no fix, or the fix has no place (see fitFix).
+ * Uses a mark's fix, Claude's or a suggestion, as an alternative with the fix active and the
+ * original kept, as typo fixes do. Null when the mark has no fix, or the fix has no place (see fitFix).
  */
-export function applyWritingFix(state: EditorState, issue: WritingIssue): TransactionSpec | null {
+export function applyFix(state: EditorState, issue: Issue): TransactionSpec | null {
   const fit = issue.fix ? fitFix(state, issue.from, issue.to, issue.fix) : null;
   if (!fit) return null;
   const { fix } = fit;

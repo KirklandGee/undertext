@@ -164,7 +164,7 @@ a time. They are short on purpose: a mark that is often wrong teaches you to ign
   "rather" and "kind of" aren't marked.
 - **Weak verbs**: a plain verb and an adverb that one stronger verb replaces, in the same tense
   (walked slowly → strolled, said loudly → shouted). "Get" isn't marked.
-- **Hidden actions**: exact phrases, in any tense (made a decision → decide, is able to → can).
+- **Hidden actions**: exact phrases, in any tense (made a decision → decided, is able to → can).
   "Made the decision" and "made a quick decision" aren't marked.
 - **Negatives**: a negative that one positive word says (does not have → lacks, did not succeed →
   failed). A plain "do not want" isn't marked. Hemingway's category is "negative or indirect
@@ -244,7 +244,21 @@ Phases 4 and 5 don't need the checker, so either can come next.
 - Simpler words are green, not Hemingway's purple. Purple is the accent, and it belongs to
   alternatives.
 - Ghosted text isn't checked, as it isn't counted.
-- "Why it's marked" shows in Review, under the grade, and on hover over the highlight.
+- "Why it's marked" shows in Review, under the grade. A click on a highlight opens a popover with
+  the reason and what to do. There are no hover tooltips.
+- The popover belongs to the caret: it opens on a click or a row's jump, and closes when you type,
+  move off the mark, select, press Esc, or close Review. So it never points at text that changed,
+  as Hemingway's can.
+- Each action keeps a way back. A suggestion becomes an alternative. A word to cut gets ghosted,
+  not deleted. Passive voice and hard sentences get "Rewrite with Claude". Its prompt names the goal,
+  such as the active voice, and the live checks drop any rewrite they would still mark. The first
+  version reused ⌘⇧G, whose drop-in prompt kept 4 of 6 rewrites passive. The prompt names the words
+  the checks flagged and the rewrites the sentence has, and a second ask adds to them. ⌥↩ runs the
+  first action. Where no action fits, the popover says why in a line: code, a ghost, an
+  alternative, or a line break in the way.
+- Suggestions take the form and case of the marked words: "made a decision" → "decided", "has made
+  a choice" → "chosen", "Not many" → "Few". Where no form fits, as "will be able to" → "can",
+  there's no suggestion.
 - The checks run with Review closed too, so the top bar shows the grade. Highlights still show
   only while Review is open.
 - Writing issues come from Claude on request, never as you type, so nothing is sent until you ask.
