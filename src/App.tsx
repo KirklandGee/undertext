@@ -45,6 +45,7 @@ import {
   setAltActive,
   setVersionActive,
   takeSelectionText,
+  ghostBlocked,
   toggleGhost,
   wordRangeAt,
 } from "./editor/commands";
@@ -56,7 +57,7 @@ import {
   setHighlights,
   setWritingIssues,
 } from "./editor/highlights";
-import { clearLab, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
+import { clearLab, ghostLabNotice, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
 import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layers";
 import { Kind } from "./editor/readability";
 import { jumpToMark, RewriteTarget } from "./editor/popover";
@@ -461,6 +462,13 @@ export default function App() {
     view().focus();
   };
 
+  /** "Keep as ghosts": marks on part of an alternative stay marks, and the bar says how many. */
+  const ghostLab = () => {
+    const notice = ghostLabNotice(view().state);
+    finishLab(ghostLabSpans(view().state));
+    if (notice) flash(notice);
+  };
+
   const stash = () => {
     const taken = takeSelectionText(view().state);
     if (!taken) {
@@ -557,8 +565,18 @@ export default function App() {
     });
   };
 
+  /** Ghosts or revives the selection from a menu, or says why it can't, as ⌘/ does. */
+  const ghost = () => {
+    const v = view();
+    const why = ghostBlocked(v.state);
+    if (why) flash(why);
+    else toggleGhost(v);
+    v.focus();
+  };
+
   const handlersRef = useRef<EditorHandlers>(null!);
   handlersRef.current = {
+    notice: flash,
     alternatives: openAlternatives,
     aiAlternatives,
     rewrite,
@@ -598,10 +616,7 @@ export default function App() {
         {
           label: ghosted ? "Revive" : "Ghost it",
           shortcut: "⌘/",
-          run: () => {
-            toggleGhost(v);
-            v.focus();
-          },
+          run: ghost,
         },
         { label: "Stash in Overflow", shortcut: "⌘⇧X", run: stash },
       );
@@ -837,7 +852,7 @@ export default function App() {
               cutWords={info.lab.kind === "cuts" ? wordsIn(view().state, labSpans(view().state)) : 0}
               onWalk={walkLab}
               onCut={() => finishLab(makeCuts(view().state))}
-              onGhost={() => finishLab(ghostLabSpans(view().state))}
+              onGhost={ghostLab}
               onClear={() => finishLab(clearLab())}
             />
           )}
@@ -992,7 +1007,8 @@ export default function App() {
               trim,
               walkLab,
               makeCuts: () => finishLab(makeCuts(view().state)),
-              ghostLab: () => finishLab(ghostLabSpans(view().state)),
+              ghostLab,
+              ghost,
               clearLab: () => finishLab(clearLab()),
               setKey: () => void openKeyDialog(),
               connectSubscription: () => void openSubscriptionDialog(),

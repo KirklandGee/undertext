@@ -1,6 +1,6 @@
 import { EditorSelection, EditorState, StateEffect, StateField, TransactionSpec } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
-import { deleteSpans } from "./commands";
+import { cutsAlternative, deleteSpans } from "./commands";
 import { Span } from "./format";
 import { layersOf, setLayers } from "./layers";
 
@@ -29,7 +29,7 @@ interface LabState {
 
 type LabAction =
   | { type: "set"; kind: "marks" | "cuts"; meta: LabMeta; spans: LabSpan[] }
-  | { type: "remove"; from: number; to: number }
+  | { type: "remove"; spans: Span[] }
   | { type: "clear" };
 
 const labEffect = StateEffect.define<LabAction>();
@@ -53,7 +53,10 @@ export const labField = StateField.define<LabState>({
     if (!prev.kind) return prev;
 
     let set = prev.set.map(tr.changes);
-    if (action?.type === "remove") set = set.update({ filter: (f, t) => !(f === action.from && t === action.to) });
+    if (action?.type === "remove") {
+      const { spans } = action;
+      set = set.update({ filter: (f, t) => !spans.some((s) => s.from === f && s.to === t) });
+    }
     // Editing inside a mark or cut drops it: the text it described is gone.
     tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
       set = set.update({ filter: (f, t) => !(f < toB && t > fromB) });
@@ -88,7 +91,7 @@ export const setLab = (kind: "marks" | "cuts", meta: LabMeta, spans: LabSpan[]):
 export const clearLab = (): TransactionSpec => ({ effects: labEffect.of({ type: "clear" }) });
 
 export const keepCut = (span: LabSpan): TransactionSpec => ({
-  effects: labEffect.of({ type: "remove", from: span.from, to: span.to }),
+  effects: labEffect.of({ type: "remove", spans: [span] }),
 });
 
 /** Moves the caret to the next or previous mark or cut. Returns null when there is none. */
@@ -101,6 +104,11 @@ export function jumpToLabSpan(state: EditorState, dir: 1 | -1): TransactionSpec 
   return { selection: EditorSelection.cursor(spans[index].from), scrollIntoView: true };
 }
 
+/** Marks or cuts that cover part of an alternative. A save would lose a ghost there. */
+export function labSpansThatCutAlternatives(state: EditorState): LabSpan[] {
+  return labSpans(state).filter((s) => cutsAlternative(state, s.from, s.to));
+}
+
 /** Applies every proposed cut: deletes it, and avoids leaving a double space behind. */
 export function makeCuts(state: EditorState): TransactionSpec | null {
   const spans = labSpans(state);
@@ -108,9 +116,23 @@ export function makeCuts(state: EditorState): TransactionSpec | null {
   return { changes: deleteSpans(state, spans), effects: labEffect.of({ type: "clear" }) };
 }
 
-/** Turns marks or proposed cuts into ordinary ghosts, which are saved with the file. */
+/** What "Keep as ghosts" says about the marks or cuts it leaves. Null when it leaves none. */
+export function ghostLabNotice(state: EditorState): string | null {
+  const n = labSpansThatCutAlternatives(state).length;
+  if (!n) return null;
+  const noun = labState(state).kind === "cuts" ? "proposed cut" : "mark";
+  const [these, cover] = n === 1 ? [`1 ${noun} stays`, "it covers"] : [`${n} ${noun}s stay`, "they cover"];
+  return `${these}: ${cover} part of an alternative, where a ghost isn't saved.`;
+}
+
+/**
+ * Turns marks or proposed cuts into ordinary ghosts, which are saved with the file. Those on part of
+ * an alternative stay as they are, since a save would lose their ghost. Null when none can go.
+ */
 export function ghostLabSpans(state: EditorState): TransactionSpec | null {
-  const spans = labSpans(state);
+  const all = labSpans(state);
+  const stay = labSpansThatCutAlternatives(state);
+  const spans = all.filter((s) => !stay.some((x) => x.from === s.from && x.to === s.to));
   if (!spans.length) return null;
   const l = layersOf(state);
   const ghosts = [...l.ghosts, ...spans.map(({ from, to }) => ({ from, to }))].sort((a, b) => a.from - b.from);
@@ -120,7 +142,8 @@ export function ghostLabSpans(state: EditorState): TransactionSpec | null {
     if (last && g.from <= last.to) last.to = Math.max(last.to, g.to);
     else merged.push({ ...g });
   }
-  return { effects: [setLayers.of({ ...l, ghosts: merged }), labEffect.of({ type: "clear" })] };
+  const lab: LabAction = stay.length ? { type: "remove", spans } : { type: "clear" };
+  return { effects: [setLayers.of({ ...l, ghosts: merged }), labEffect.of(lab)] };
 }
 
 /** Clicking a proposed cut keeps that text. */

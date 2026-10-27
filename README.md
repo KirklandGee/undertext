@@ -191,7 +191,8 @@ limits. If `claude` isn't in `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local
 
 ## Known limitations
 
-- A ghost that covers only part of an alternative is lost when you save.
+- A ghost can't cover only part of an alternative: a save would lose it. ⌘/, Review's popover, and
+  "Keep as ghosts" leave that text as it is and say why. Ghost the whole alternative instead.
 - Tables, images, and HTML show as Markdown source, not rendered.
 
 ## Development

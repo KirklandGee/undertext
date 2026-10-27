@@ -14,10 +14,12 @@ import {
   settleAll,
   setVersionActive,
   startsWithVowelSound,
+  ghostBlocked,
   toggleGhost,
   versionedItems,
 } from "./commands";
 import { parsePage, serializePage } from "./format";
+import { ghostOrKeep } from "./setup";
 import { layers, layersOf } from "./layers";
 
 const stateFor = (md: string) => {
@@ -135,6 +137,25 @@ describe("undo", () => {
     state = state.update({ changes: { from: end - 2, to: end + 3, insert: "X" } }).state;
     state = run(state, undo);
     expect(save(state)).toBe("one {{two|deux}} three\n");
+  });
+
+  it("won't ghost part of an alternative, which a save would lose, and says why", () => {
+    // "two words" at 4–13 is an alternative.
+    const base = stateFor("one {{two words|deux mots}} three\n");
+    const part = select(base, 4, 7);
+    expect(ghostBlocked(part)).toBe("A ghost on part of an alternative isn't saved. Ghost all of it, or none.");
+    expect(layersOf(run(part, toggleGhost)).ghosts).toEqual([]);
+    const whole = select(base, 0, 13);
+    expect(ghostBlocked(whole)).toBeNull();
+    expect(save(run(whole, toggleGhost))).toBe("{-one {{two words|deux mots}}-} three\n");
+
+    // ⌘/ says why, and changes nothing.
+    const said: string[] = [];
+    let state = part;
+    const handled = ghostOrKeep((m) => said.push(m))({ state, dispatch: (tr) => (state = tr.state) });
+    expect(handled).toBe(true);
+    expect(said).toEqual(["A ghost on part of an alternative isn't saved. Ghost all of it, or none."]);
+    expect(layersOf(state).ghosts).toEqual([]);
   });
 
   it("undoes a ghost toggle", () => {

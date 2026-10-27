@@ -62,6 +62,8 @@ export interface PaletteContext {
     walkLab(): void;
     makeCuts(): void;
     ghostLab(): void;
+    /** Ghosts or revives the selection, or says why it can't. */
+    ghost(): void;
     clearLab(): void;
     setKey(): void;
     connectSubscription(): void;
@@ -224,7 +226,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       title: ghosted ? "Revive the selection" : "Ghost the selection",
       shortcut: "⌘/",
       keywords: "dim fade hide maybe cut",
-      run: () => run(toggleGhost),
+      run: actions.ghost,
     });
   } else if (ghostAt(state, sel.from)) {
     add({ id: "ghost.revive", group: "Ghost", title: "Revive this ghosted text", shortcut: "⌘/", keywords: "undim restore show", run: () => run(toggleGhost) });

@@ -7,7 +7,7 @@ import { buildCommands, GROUPS, PaletteCommand, PaletteContext } from "../palett
 import { createAlt, findAlt } from "./commands";
 import { parsePage } from "./format";
 import { setHighlights, setWritingIssues } from "./highlights";
-import { ghostLabSpans, labSpans, makeCuts, setLab } from "./lab";
+import { ghostLabNotice, ghostLabSpans, labSpans, labSpansThatCutAlternatives, makeCuts, setLab } from "./lab";
 import { layersOf } from "./layers";
 import { createEditorState, describe as describeEditor, pageMarkdown } from "./setup";
 
@@ -217,6 +217,26 @@ describe("the Lab", () => {
     expect(layersOf(state).ghosts).toEqual([{ from: 4, to: 7 }]);
     expect(labSpans(state)).toEqual([]);
   });
+
+  it("leaves a mark on part of an alternative as a mark, since a save would lose its ghost", () => {
+    // "two words" at 4–13 is an alternative. "one two" cuts into it; "three" doesn't.
+    let state = stateFor("one {{two words|deux mots}} three four\n");
+    state = state.update(setLab("marks", { label: "Hedges" }, [{ from: 0, to: 7, reason: "A" }, { from: 14, to: 19, reason: "B" }])).state;
+    expect(labSpansThatCutAlternatives(state)).toEqual([{ from: 0, to: 7, reason: "A" }]);
+    expect(ghostLabNotice(state)).toBe("1 mark stays: it covers part of an alternative, where a ghost isn't saved.");
+    state = state.update(ghostLabSpans(state)!).state;
+    expect(layersOf(state).ghosts).toEqual([{ from: 14, to: 19 }]);
+    expect(labSpans(state)).toEqual([{ from: 0, to: 7, reason: "A" }]);
+    expect(pageMarkdown(state, "")).toBe("one {{two words|deux mots}} {-three-} four\n");
+    // With only such marks left, there's nothing to ghost.
+    expect(ghostLabSpans(state)).toBeNull();
+
+    const cuts = stateFor("one {{two words|deux mots}} three\n").update(
+      setLab("cuts", { label: "Slight trim" }, [{ from: 0, to: 7 }, { from: 8, to: 19 }]),
+    ).state;
+    expect(ghostLabNotice(cuts)).toBe("2 proposed cuts stay: they cover part of an alternative, where a ghost isn't saved.");
+    expect(ghostLabNotice(stateFor("one two\n"))).toBeNull();
+  });
 });
 
 describe("command palette", () => {
@@ -261,6 +281,7 @@ describe("command palette", () => {
       walkLab: noop,
       makeCuts: noop,
       ghostLab: noop,
+      ghost: noop,
       clearLab: noop,
       setKey: noop,
       connectSubscription: noop,
@@ -302,6 +323,14 @@ describe("command palette", () => {
 
     expect(GROUPS).toContain("Review");
     expect(GROUPS).not.toContain("Lab");
+  });
+
+  it("ghosts the selection through the app, which says why when it can't", () => {
+    const ran: string[] = [];
+    const state = stateFor("one {{two words|deux mots}} three\n").update({ selection: EditorSelection.range(4, 7) }).state;
+    const entry = buildCommands(ctx(state, {}, { ghost: () => ran.push("ghost") })).find((c) => c.id === "ghost.add")!;
+    entry.run();
+    expect(ran).toEqual(["ghost"]);
   });
 
   it("finds writing issues, and offers the fix at the caret", () => {

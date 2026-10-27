@@ -375,6 +375,17 @@ export function union(spans: Span[]): Span[] {
   return out;
 }
 
+/** Whether a ghost on `from`–`to` would cover only part of an alternative. A save loses such a ghost. */
+export const cutsAlternative = (state: EditorState, from: number, to: number) =>
+  layersOf(state).alts.some((a) => a.from < to && a.to > from && (a.from < from || a.to > to));
+
+/** Why ⌘/ won't ghost the selection, or null when it will ghost or revive it. */
+export function ghostBlocked(state: EditorState): string | null {
+  const { from, to, empty } = state.selection.main;
+  if (empty || layersOf(state).ghosts.some((g) => g.from < to && g.to > from)) return null;
+  return cutsAlternative(state, from, to) ? "A ghost on part of an alternative isn't saved. Ghost all of it, or none." : null;
+}
+
 export function ghostAt(state: EditorState, pos: number): Span | null {
   return layersOf(state).ghosts.find((g) => g.from <= pos && pos <= g.to) ?? null;
 }
@@ -390,6 +401,8 @@ export const toggleGhost: StateCommand = ({ state, dispatch }) => {
     ghosts = l.ghosts.filter((x) => x !== g);
   } else if (l.ghosts.some((g) => g.from < to && g.to > from)) {
     ghosts = subtract(l.ghosts, from, to);
+  } else if (ghostBlocked(state)) {
+    return false;
   } else {
     ghosts = union([...l.ghosts, { from, to }]);
   }
@@ -404,7 +417,7 @@ export const toggleGhost: StateCommand = ({ state, dispatch }) => {
 export function ghostRange(state: EditorState, from: number, to: number): TransactionSpec | null {
   const l = layersOf(state);
   if (from >= to || l.ghosts.some((g) => g.from < to && g.to > from)) return null;
-  if (l.alts.some((a) => a.from < to && a.to > from && (a.from < from || a.to > to))) return null;
+  if (cutsAlternative(state, from, to)) return null;
   return { effects: setLayers.of({ ...l, ghosts: union([...l.ghosts, { from, to }]) }) };
 }
 

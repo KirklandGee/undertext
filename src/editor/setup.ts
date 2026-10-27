@@ -12,6 +12,7 @@ import {
   jumpToItem,
   rangeMarkdown,
   syncedVariants,
+  ghostBlocked,
   toggleGhost,
   versionAt,
   wordRangeAt,
@@ -35,18 +36,30 @@ export interface EditorHandlers {
   escape(): boolean;
   /** Claude's rewrites of a marked sentence, from the popover. */
   rewrite(target: RewriteTarget): void;
+  /** Says why a key did nothing, as the bar under the page does. */
+  notice(message: string): void;
 }
 
-/** ⌘/ on a proposed cut keeps the text. Anywhere else it ghosts or revives. */
-const ghostOrKeep: StateCommand = (target) => {
-  const { state, dispatch } = target;
-  const cut = labSpanAt(state, state.selection.main.from, "cuts");
-  if (cut) {
-    dispatch(state.update(keepCut(cut)));
-    return true;
-  }
-  return toggleGhost(target);
-};
+/**
+ * ⌘/ on a proposed cut keeps the text. Anywhere else it ghosts or revives, or `notice` says why it
+ * won't.
+ */
+export const ghostOrKeep =
+  (notice: (message: string) => void): StateCommand =>
+  (target) => {
+    const { state, dispatch } = target;
+    const cut = labSpanAt(state, state.selection.main.from, "cuts");
+    if (cut) {
+      dispatch(state.update(keepCut(cut)));
+      return true;
+    }
+    const why = ghostBlocked(state);
+    if (why) {
+      notice(why);
+      return true;
+    }
+    return toggleGhost(target);
+  };
 
 // ⌥J/⌥K cycle, ⌥⇧J/⌥⇧K cycle paragraph versions, ⌥L/⌥H jump between items.
 // Match the physical key: Option changes e.key (⌥J types ∆). These keys are
@@ -105,7 +118,7 @@ export function createEditorState(
   handlers?: () => EditorHandlers,
   checks?: HighlightSettings,
 ): EditorState {
-  const call = (fn: Exclude<keyof EditorHandlers, "rewrite">) => () => {
+  const call = (fn: Exclude<keyof EditorHandlers, "rewrite" | "notice">) => () => {
     if (!handlers) return false;
     return handlers()[fn]() !== false;
   };
@@ -144,7 +157,7 @@ export function createEditorState(
           { key: "Shift-Mod-7", run: toggleList("ordered") },
           { key: "Shift-Mod-8", run: toggleList("bullet") },
           { key: "Shift-Mod-9", run: toggleList("task") },
-          { key: "Mod-/", run: ghostOrKeep },
+          { key: "Mod-/", run: ghostOrKeep((message) => handlers?.().notice(message)) },
           { key: "Shift-Mod-a", run: call("alternatives") },
           { key: "Shift-Mod-g", run: call("aiAlternatives") },
           { key: "Shift-Mod-x", run: call("stash") },
