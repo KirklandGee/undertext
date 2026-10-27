@@ -261,15 +261,37 @@ const addSwap = (map: Map<string, Swap>, phrase: string, plain: string, role: Ro
   else map.set(phrase, { plain, roles: [role] });
 };
 
-/** A participle follows these, as in "has made" or "was acquired". */
-const BEFORE_PARTICIPLE = /(?<![\p{L}'’])(?:has|have|had|having|am|is|are|was|were|be|been|being)\s+$/iu;
-/** A plain infinitive follows these, as in "will make". */
-const BEFORE_INFINITIVE = /(?<![\p{L}'’])(?:to|will|would|can|could|may|might|must|shall|should|do|does|did)\s+$/iu;
+/** Helper verbs a participle follows, as in "has made" or "was acquired", and contractions of them. */
+const PERFECT = /^(?:has|have|had|having|am|is|are|was|were|be|been|being)$|.['’](?:s|ve|d|re|m)$/iu;
+/** Words a plain infinitive follows, as in "will make", and "we'll make". */
+const MODAL = /^(?:to|will|would|can|cannot|could|may|might|must|shall|should|do|does|did|wo|ca|sha)$|.['’]ll$/iu;
+/** Words that can stand between a helper verb and its verb, as in "has not made" or "has finally made". */
+const BETWEEN = new Set(["not", "never", "already", "also", "always", "just", "ever", "still"]);
+const PRONOUNS = new Set(["i", "you", "he", "she", "it", "we", "they"]);
+
+/**
+ * Whether `before` ends with a helper verb that `helper` matches, maybe with "n't", maybe then one
+ * word: "not", an adverb, or, in a question that starts with the helper, its subject ("Has she").
+ */
+function endsWithHelper(before: string, helper: RegExp): boolean {
+  if (!/\s$/.test(before)) return false;
+  const words = [...before.matchAll(/[\p{L}'’]+/gu)];
+  const end = (m: RegExpMatchArray) => m.index! + m[0].length;
+  const is = (m: RegExpMatchArray | undefined) => !!m && helper.test(m[0].replace(/n['’]t$/iu, ""));
+  const last = words[words.length - 1];
+  if (!last || before.slice(end(last)).trim()) return false;
+  if (is(last)) return true;
+  const prev = words[words.length - 2];
+  if (!prev || before.slice(end(prev), last.index).trim() || !is(prev)) return false;
+  const word = last[0].toLowerCase();
+  if (BETWEEN.has(word) || (word.endsWith("ly") && !LY_WORDS.has(word))) return true;
+  return PRONOUNS.has(word) && /(?:^|[.!?]["'”’)]*\s+)$/u.test(before.slice(0, prev.index));
+}
 
 /** The form the matched verb has here, from the words before it. A form listed as past comes before its participle. */
 function roleHere(roles: Role[], before: string): Role {
-  if (roles.includes("pp") && BEFORE_PARTICIPLE.test(before)) return "pp";
-  if (roles.includes("base") && BEFORE_INFINITIVE.test(before)) return "inf";
+  if (roles.includes("pp") && endsWithHelper(before, PERFECT)) return "pp";
+  if (roles.includes("base") && endsWithHelper(before, MODAL)) return "inf";
   return roles[0];
 }
 
@@ -360,17 +382,22 @@ const SIMPLER_FORMS = new Map<string, Swap>(
 const SIMPLER_WORDS = phrases([...SIMPLER_FORMS.keys()]);
 
 const ADVERB = /(?<![\p{L}\p{N}'’-])\p{L}+ly(?![\p{L}\p{N}'’-])/giu;
-/** Words that end in -ly but are not adverbs, or that Hemingway leaves alone. */
-const NOT_ADVERBS = new Set(
+/** Words that end in -ly but are not adverbs. */
+const LY_WORDS = new Set(
   (
     "only early daily weekly monthly yearly hourly nightly family reply apply supply comply imply rely ally rally " +
     "tally belly bully jelly lily fly butterfly holy ugly silly lonely lovely friendly unfriendly likely unlikely " +
     "elderly costly deadly lively curly oily hilly chilly wily italy july emily kelly sally molly holly assembly " +
-    "anomaly monopoly homily folly jolly melancholy " +
-    "usually finally recently rarely generally especially exactly currently actually approximately hardly " +
-    "immediately unfortunately definitely awfully completely"
+    "anomaly monopoly homily folly jolly melancholy"
   ).split(" "),
 );
+/** Words that end in -ly and aren't marked: not adverbs, or adverbs Hemingway leaves alone. */
+const NOT_ADVERBS = new Set([
+  ...LY_WORDS,
+  ..."usually finally recently rarely generally especially exactly currently actually approximately hardly immediately unfortunately definitely awfully completely".split(
+    " ",
+  ),
+]);
 
 const IRREGULAR =
   "known done made given taken written seen built held told found kept left lost paid said sent shown sold taught " +
@@ -395,6 +422,11 @@ const NOTES: Record<"adverb" | "passive" | "qualifier" | "intensifier" | "filler
   filler: "Filler. It adds words, not meaning.",
 };
 
+/** Plain words that can't follow a word like "a", "the", "his", or "this". "Many" can follow most of those. */
+const DETERMINERS = new Set(["more", "most", "some", "enough"]);
+const AFTER_DETERMINER =
+  /(?<![\p{L}\p{N}])(?:a|an|the|this|that|these|those|my|your|his|her|its|our|their|each|every|any|no)\s+$/iu;
+
 /** Starts with a capital where the marked text does. */
 const matchCase = (fix: string, marked: string) => (/^\p{Lu}/u.test(marked) ? fix[0].toUpperCase() + fix.slice(1) : fix);
 
@@ -404,26 +436,49 @@ const matchCase = (fix: string, marked: string) => (/^\p{Lu}/u.test(marked) ? fi
  */
 function wordIssues(text: string): { issues: Issue[]; weakeners: number } {
   const candidates: Issue[] = [];
-  const add = (re: RegExp, kind: Kind, mark: (m: RegExpExecArray) => Pick<Issue, "note" | "fix">) => {
+  type Mark = Pick<Issue, "note" | "fix"> & { to?: number };
+  const add = (re: RegExp, kind: Kind, mark: (m: RegExpExecArray) => Mark) => {
     for (const m of text.matchAll(re)) candidates.push({ from: m.index, to: m.index + m[0].length, kind, ...mark(m) });
   };
-  /** The plainer words, in the form and case of the marked ones. */
-  const swap = (map: Map<string, Swap>, note: (fix: string) => string) => (m: RegExpExecArray) => {
-    const { plain, roles } = map.get(key(m[0]))!;
-    const fix = inflect(plain, roleHere(roles, text.slice(Math.max(0, m.index - 12), m.index)));
-    return fix === null ? { note: "Hidden action. Use a plain verb." } : { note: note(matchCase(fix, m[0])), fix: matchCase(fix, m[0]) };
-  };
+  const before = (m: RegExpExecArray) => text.slice(Math.max(0, m.index - 40), m.index);
+  const after = (m: RegExpExecArray) => text.slice(m.index + m[0].length, m.index + m[0].length + 20);
+  /**
+   * The plainer words, in the form and case of the marked ones. `fits` says whether they would read
+   * right in place; where they wouldn't, the mark stays with the `none` note.
+   */
+  const swap =
+    (map: Map<string, Swap>, note: (fix: string) => string, none: string, fits = (_m: RegExpExecArray, _plain: string) => true) =>
+    (m: RegExpExecArray): Mark => {
+      const { plain, roles } = map.get(key(m[0]))!;
+      const fix = fits(m, plain) ? inflect(plain, roleHere(roles, before(m))) : null;
+      return fix === null ? { note: none } : { note: note(matchCase(fix, m[0])), fix: matchCase(fix, m[0]) };
+    };
   // Earlier in the list wins when two start at the same place and have the same length.
   add(FILLERS, "filler", () => ({ note: NOTES.filler }));
   add(QUALIFIERS, "qualifier", () => ({ note: NOTES.qualifier }));
   add(INTENSIFIERS, "intensifier", () => ({ note: NOTES.intensifier }));
-  add(HIDDEN, "hidden", swap(HIDDEN_FORMS, (fix) => `Hidden action. Try “${fix}”.`));
+  const hidden = swap(HIDDEN_FORMS, (fix) => `Hidden action. Try “${fix}”.`, "Hidden action. Use a plain verb.");
+  add(HIDDEN, "hidden", (m) => {
+    // "Carried out a review of the code": the verb takes the "of" with it, "reviewed the code".
+    const of = /^\s+of(?![\p{L}\p{N}])(?!\s+course(?![\p{L}\p{N}]))/u.exec(after(m));
+    const mark = hidden(m);
+    return of && !/\sof$/i.test(m[0]) && mark.fix ? { ...mark, to: m.index + m[0].length + of[0].length } : mark;
+  });
   add(NEGATIVE, "negative", (m) => {
+    // "Does not have to go" isn't "lacks to go".
+    if (/have$/i.test(m[0]) && /^\s+(?:to|any)(?![\p{L}\p{N}])/u.test(after(m))) return { note: "Negative. Say what is, not what isn't." };
     const fix = matchCase(NEGATIVE_FORMS.get(key(m[0]))!, m[0]);
     return { note: `Negative. Try “${fix}”.`, fix };
   });
-  add(WEAK_VERBS, "weakVerb", swap(WEAK_VERB_FORMS, (fix) => `Weak verb. Try “${fix}”.`));
-  add(SIMPLER_WORDS, "simpler", swap(SIMPLER_FORMS, (fix) => `Simpler: ${fix}.`));
+  add(WEAK_VERBS, "weakVerb", swap(WEAK_VERB_FORMS, (fix) => `Weak verb. Try “${fix}”.`, "Weak verb. Use one precise verb."));
+  const simpler = swap(SIMPLER_FORMS, (fix) => `Simpler: ${fix}.`, "Simpler word. Reword it plainly.", (m, plain) => {
+    // "An additional fee" isn't "an more fee", and "do not often see" isn't "do rarely see".
+    if (DETERMINERS.has(plain) && AFTER_DETERMINER.test(before(m))) return false;
+    if (plain === "many" && /(?<![\p{L}\p{N}])(?:a|an|each|every)\s+$/iu.test(before(m))) return false;
+    if (plain === "rarely" && (/(?<![\p{L}\p{N}])(?:do|does|did)\s+$/iu.test(before(m)) || /^\s+that(?![\p{L}\p{N}])/u.test(after(m)))) return false;
+    return true;
+  });
+  add(SIMPLER_WORDS, "simpler", simpler);
   candidates.sort((a, b) => a.from - b.from || b.to - a.to);
 
   const kept: Issue[] = [];

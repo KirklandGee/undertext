@@ -1,7 +1,7 @@
 import { EditorState, TransactionSpec } from "@codemirror/state";
-import { addAiAlternatives, blockAt, countWords, findAlt, syncedVariants } from "../editor/commands";
+import { addAiAlternatives, blockAt, countWords, findAlt, syncedVariants, touchesCode } from "../editor/commands";
 import { Alt, newId } from "../editor/format";
-import { fitFix, touchesCode, WritingIssue } from "../editor/highlights";
+import { fitFix, WritingIssue } from "../editor/highlights";
 import { LabSpan } from "../editor/lab";
 import { layersOf, mapLayers, setLayers } from "../editor/layers";
 import { checkPage, Kind } from "../editor/readability";

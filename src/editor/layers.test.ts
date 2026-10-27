@@ -18,8 +18,9 @@ import {
   toggleGhost,
   versionedItems,
 } from "./commands";
+import { insertMarkdown } from "./clipboard";
 import { parsePage, serializePage } from "./format";
-import { ghostOrKeep } from "./setup";
+import { createEditorState, ghostOrKeep } from "./setup";
 import { layers, layersOf } from "./layers";
 
 const stateFor = (md: string) => {
@@ -156,6 +157,40 @@ describe("undo", () => {
     expect(handled).toBe(true);
     expect(said).toEqual(["A ghost on part of an alternative isn't saved. Ghost all of it, or none."]);
     expect(layersOf(state).ghosts).toEqual([]);
+  });
+
+  it("won't revive part of a ghost when the rest would sit on part of an alternative", () => {
+    // "one two words" at 0–13 is ghosted; "two words" at 4–13 is an alternative inside it.
+    const base = stateFor("{-one {{two words|deux mots}}-} three\n");
+    const part = select(base, 0, 7);
+    expect(ghostBlocked(part)).toBe("A ghost on part of an alternative isn't saved. Revive all of it, or none.");
+    expect(layersOf(run(part, toggleGhost)).ghosts).toEqual([{ from: 0, to: 13 }]);
+    const whole = select(base, 4, 13);
+    expect(ghostBlocked(whole)).toBeNull();
+    expect(save(run(whole, toggleGhost))).toBe("{-one -}{{two words|deux mots}} three\n");
+  });
+
+  it("drops a pasted ghost that would sit on part of an alternative", () => {
+    // Pasting "{-new-}" into "two words", the alternative at 4–13.
+    const state = stateFor("one {{two words|deux mots}} three\n");
+    const next = state.update(insertMarkdown(state, 8, 8, "{-new-} ")).state;
+    expect(next.doc.toString()).toBe("one two new words three");
+    expect(layersOf(next).ghosts).toEqual([]);
+    // Outside an alternative it stays.
+    const out = state.update(insertMarkdown(state, 0, 0, "{-new-} ")).state;
+    expect(layersOf(out).ghosts).toEqual([{ from: 0, to: 3 }]);
+    // An alternative can't hold another, so a pasted one inside keeps only its words.
+    const nested = state.update(insertMarkdown(state, 8, 8, "{{a|b}}")).state;
+    expect(nested.doc.toString()).toBe("one two awords three");
+    expect(layersOf(nested).alts.map((a) => [a.from, a.to])).toEqual([[4, 14]]);
+  });
+
+  it("won't ghost code, which a save would write as text", () => {
+    // "all" at 10–13 is inside the code span. Telling code needs the editor's Markdown parser.
+    const page = parsePage("Run `make all now` here.\n");
+    const state = select(createEditorState(page.text, page), 10, 13);
+    expect(ghostBlocked(state)).toBe("Code can't be ghosted: a save would write the ghost into the code.");
+    expect(layersOf(run(state, toggleGhost)).ghosts).toEqual([]);
   });
 
   it("undoes a ghost toggle", () => {

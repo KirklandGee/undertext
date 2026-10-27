@@ -18,12 +18,12 @@ import {
   wordRangeAt,
 } from "./commands";
 import { Layers, MARKDOWN_EXTENSIONS, serializePage } from "./format";
-import { applyFix, highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
+import { highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
 import { inkLayers } from "./ink";
 import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
 import { layers, layersField, layersOf } from "./layers";
-import { popover, RewriteTarget } from "./popover";
+import { actionsFor, popover, popoverAt, RewriteTarget } from "./popover";
 import { livePreview } from "./preview";
 import { Kind, KINDS } from "./readability";
 
@@ -207,6 +207,8 @@ export interface EditorInfo {
     ran: boolean;
     here: string | null;
     fix: string | null;
+    /** The first action at the caret when it isn't a fix: "Ghost it" or "Rewrite with Claude". ⌥↩ runs it. */
+    action: string | null;
   } | null;
 }
 
@@ -257,9 +259,11 @@ export function describe(state: EditorState): EditorInfo {
     const counts = Object.fromEntries(KINDS.map((k) => [k, 0])) as Record<Kind, number>;
     const writing = writingIssues(state);
     for (const i of [...report.issues, ...(writing ?? [])]) counts[i.kind] += 1;
-    const at = issueAt(state, state.selection.main.head);
+    // The popover's mark when it's open, so the panel, the palette, and ⌥↩ all mean the same one.
+    const at = popoverAt(state) ?? issueAt(state, state.selection.main.head);
+    const first = at && actionsFor(state, at)[0];
     // No fix to offer where it can't apply, such as over an alternative.
-    const fix = at?.fix && applyFix(state, at) ? at.fix : null;
+    const fix = first?.kind === "fix" ? first.label : null;
     checks = {
       grade: report.grade,
       sentences: report.sentences,
@@ -268,6 +272,7 @@ export function describe(state: EditorState): EditorInfo {
       ran: writing !== null,
       here: at?.note ?? null,
       fix,
+      action: first && first.kind !== "fix" ? first.label : null,
     };
   }
 

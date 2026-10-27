@@ -146,7 +146,20 @@ describe("AI results on the page", () => {
       "Someone quickly closed the door.",
       "The door swung shut.",
     ]);
+    const saved = "{{The door was quickly closed.|~Someone quickly closed the door.|~The door swung shut.}}\n";
+    expect(pageMarkdown(state, "")).toBe(saved);
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    // An alternative with one variant left saves as plain text.
+    expect(pageMarkdown(state, "")).toBe("The door was quickly closed.\n");
+    step(redo);
+    expect(pageMarkdown(state, "")).toBe(saved);
     expect(addRewrites(state, made.id, "passive", ["It was shut.", "The door was closed."])).toBeNull();
+    // A backtick or a lone carriage return would change the page the file reopens as.
+    expect(addRewrites(state, made.id, "passive", ["He shut `the door.", "He shut it.\rThen he left.", "He <!-- shut it."])).toBeNull();
+    // Half of some bold, or block markup where the sentence starts its line, would change the page.
+    const kept = state.update(addRewrites(state, made.id, "passive", ["**He shut the door.", "- He shut it.", "He **shut** it."])!).state;
+    expect(findAlt(kept, made.id)!.variants.slice(3)).toEqual(["He **shut** it."]);
 
     // A rewrite of a very hard sentence that is still hard doesn't fix it either.
     // 20 words, 99 letters: grade 12, hard.
@@ -230,6 +243,21 @@ describe("the Lab", () => {
     expect(pageMarkdown(state, "")).toBe("one {{two words|deux mots}} {-three-} four\n");
     // With only such marks left, there's nothing to ghost.
     expect(ghostLabSpans(state)).toBeNull();
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    expect(pageMarkdown(state, "")).toBe("one {{two words|deux mots}} three four\n");
+    step(redo);
+    expect(pageMarkdown(state, "")).toBe("one {{two words|deux mots}} {-three-} four\n");
+
+    // With several marks, only those that go are taken off.
+    let many = stateFor("one {{two words|deux mots}} three four five\n");
+    many = many.update(setLab("marks", { label: "Hedges" }, [{ from: 0, to: 7 }, { from: 14, to: 19 }, { from: 25, to: 29 }])).state;
+    many = many.update(ghostLabSpans(many)!).state;
+    expect(labSpans(many)).toEqual([{ from: 0, to: 7, reason: undefined }]);
+    expect(layersOf(many).ghosts).toEqual([
+      { from: 14, to: 19 },
+      { from: 25, to: 29 },
+    ]);
 
     const cuts = stateFor("one {{two words|deux mots}} three\n").update(
       setLab("cuts", { label: "Slight trim" }, [{ from: 0, to: 7 }, { from: 8, to: 19 }]),
@@ -282,6 +310,7 @@ describe("command palette", () => {
       makeCuts: noop,
       ghostLab: noop,
       ghost: noop,
+      firstAction: noop,
       clearLab: noop,
       setKey: noop,
       connectSubscription: noop,
@@ -323,6 +352,20 @@ describe("command palette", () => {
 
     expect(GROUPS).toContain("Review");
     expect(GROUPS).not.toContain("Lab");
+  });
+
+  it("lists ⌥↩'s ghost or rewrite for the mark at the caret", () => {
+    const ran: string[] = [];
+    const find = (state: EditorState) =>
+      buildCommands(ctx(state, {}, { firstAction: () => ran.push("first") })).find((c) => c.id === "lab.firstAction");
+    let state = stateFor("It is really done.\n").update(setHighlights({ on: true })).state;
+    state = state.update({ selection: EditorSelection.cursor(8) }).state;
+    expect(find(state)).toMatchObject({ group: "Review", title: "Ghost it", shortcut: "⌥↩" });
+    find(state)!.run();
+    expect(ran).toEqual(["first"]);
+    // A suggestion has its own entry, "Use the fix".
+    state = stateFor("She walked slowly home.\n").update(setHighlights({ on: true })).state;
+    expect(find(state.update({ selection: EditorSelection.cursor(6) }).state)).toBeUndefined();
   });
 
   it("ghosts the selection through the app, which says why when it can't", () => {

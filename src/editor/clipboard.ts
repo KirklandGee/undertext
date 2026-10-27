@@ -25,12 +25,18 @@ export function insertMarkdown(state: EditorState, from: number, to: number, md:
   const changes = state.changes({ from, to, insert: slice.text });
   const mapped = mapLayers(layersOf(state), changes);
   const shift = <T extends Span>(r: T): T => ({ ...r, from: r.from + from, to: r.to + from });
+  // An alternative can't hold another, so a pasted one inside an alternative keeps only its words.
+  const pasted = slice.alts.map((a) => ({ ...shift(a), id: newId() }));
+  const inside = (a: Span) => mapped.alts.some((m) => m.from < a.to && m.to > a.from);
+  const alts = [...mapped.alts, ...pasted.filter((a) => !inside(a))].sort((a, b) => a.from - b.from);
+  // A ghost on part of an alternative isn't saved, so a pasted one there is left out.
+  const cuts = (g: Span) => alts.some((a) => a.from < g.to && a.to > g.from && (a.from < g.from || a.to > g.to));
   return {
     changes,
     effects: setLayers.of({
       ...mapped,
-      alts: [...mapped.alts, ...slice.alts.map((a) => ({ ...shift(a), id: newId() }))].sort((a, b) => a.from - b.from),
-      ghosts: union([...mapped.ghosts, ...slice.ghosts.map(shift)]),
+      alts,
+      ghosts: union([...mapped.ghosts, ...slice.ghosts.map(shift).filter((g) => !cuts(g))]),
     }),
     selection: EditorSelection.cursor(from + slice.text.length),
     scrollIntoView: true,

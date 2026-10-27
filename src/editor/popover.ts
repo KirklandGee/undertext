@@ -1,7 +1,7 @@
 import { EditorSelection, EditorState, Facet, Prec, StateEffect, StateField, TransactionSpec } from "@codemirror/state";
 import { EditorView, keymap, showTooltip, Tooltip } from "@codemirror/view";
-import { ghostRange } from "./commands";
-import { applyFix, BLOCK_START, issueAt, leadLength, nextIssue, shownIssues, touchesCode } from "./highlights";
+import { BLOCK_START, ghostRange, leadLength, touchesCode, unbalancedMarkup } from "./commands";
+import { applyFix, issueAt, nextIssue, shownIssues, writingIssues } from "./highlights";
 import { layersOf } from "./layers";
 import { Issue, Kind, sentences } from "./readability";
 
@@ -9,14 +9,21 @@ import { Issue, Kind, sentences } from "./readability";
 // caret: it shows while the caret stays in its mark, and closes when you type, move the caret off
 // the mark, select, press Esc, or close Review. So it never points at text that changed.
 
-const openEffect = StateEffect.define<Issue | null>();
+/** The mark the popover is open on, and where it sits: at the caret when it opened. */
+interface Open extends Issue {
+  at: number;
+}
+
+const openEffect = StateEffect.define<Open | null>();
 
 /** The mark the popover is open on, while it still shows and the caret is in it. */
-const popoverField = StateField.define<Issue | null>({
+const popoverField = StateField.define<Open | null>({
   create: () => null,
   update(open, tr) {
     for (const e of tr.effects) if (e.is(openEffect)) return e.value;
     if (!open || tr.docChanged) return null;
+    // New layers or new issues from Claude can change what it offers: it closes rather than go stale.
+    if (layersOf(tr.startState) !== layersOf(tr.state) || writingIssues(tr.startState) !== writingIssues(tr.state)) return null;
     const sel = tr.state.selection.main;
     if (!sel.empty || sel.head < open.from || sel.head > open.to) return null;
     const same = (i: Issue) => i.from === open.from && i.to === open.to && i.kind === open.kind;
@@ -31,7 +38,7 @@ export const popoverAt = (state: EditorState): Issue | null => state.field(popov
 export function openPopover(state: EditorState): TransactionSpec | null {
   const sel = state.selection.main;
   const issue = sel.empty ? issueAt(state, sel.head) : null;
-  return issue ? { effects: openEffect.of(issue) } : null;
+  return issue ? { effects: openEffect.of({ ...issue, at: sel.head }) } : null;
 }
 
 export const closePopover: TransactionSpec = { effects: openEffect.of(null) };
@@ -42,7 +49,7 @@ export function jumpToMark(state: EditorState, kinds: readonly Kind[], dir: 1 | 
   if (!issue) return null;
   return {
     selection: EditorSelection.cursor(issue.from),
-    effects: [EditorView.scrollIntoView(issue.from, { y: "center" }), openEffect.of(issue)],
+    effects: [EditorView.scrollIntoView(issue.from, { y: "center" }), openEffect.of({ ...issue, at: issue.from })],
   };
 }
 
@@ -60,10 +67,16 @@ const SENTENCES: readonly Kind[] = ["passive", "hard", "veryHard"];
 
 /** A hard sentence itself, or the sentence around another mark, after any list or quote marker. */
 function sentenceAround(state: EditorState, issue: Issue): { from: number; to: number } {
-  if (issue.kind === "hard" || issue.kind === "veryHard") return issue;
+  if (issue.kind === "hard" || issue.kind === "veryHard") return { from: issue.from, to: issue.to };
   const line = state.doc.lineAt(issue.from);
   const s = sentences(line.text).find((s) => line.from + s.from <= issue.from && issue.to <= line.from + s.to);
-  return s ? { from: line.from + Math.max(s.from, leadLength(line.text)), to: line.from + s.to } : issue;
+  if (!s) return { from: issue.from, to: issue.to };
+  const range = { from: line.from + Math.max(s.from, leadLength(line.text)), to: line.from + s.to };
+  // A sentence with no end on its line goes on in the next one, unless that one starts a block of
+  // its own: a list item, a heading, a quote, a table.
+  const next = line.number < state.doc.lines ? state.doc.line(line.number + 1).text.trimStart() : "";
+  const open = !/[.!?]["'”’)\]*_~]*$/.test(line.text.slice(0, s.to)) && s.to === line.text.trimEnd().length;
+  return open && next && !BLOCK_START.test(next) ? { ...range, to: state.doc.line(line.number + 1).to } : range;
 }
 
 /**
@@ -79,6 +92,7 @@ function blocker(state: EditorState, from: number, to: number, sameAlt: boolean)
   if (l.ghosts.some((g) => cuts(g) && (g.from > from || g.to < to))) return "It has a ghosted word. Revive it with ⌘/ first.";
   if (l.alts.some((a) => cuts(a) && !(sameAlt && a.from === from && a.to === to))) return "Part of it already has alternatives.";
   const text = state.doc.sliceString(from, to);
+  if (unbalancedMarkup(text)) return "It cuts through bold or italic text.";
   if (!text.trim() || (leadLength(line.text) >= from - line.from && BLOCK_START.test(text))) return "It starts the line with Markdown markup.";
   return null;
 }
@@ -96,10 +110,14 @@ export function rewriteRange(state: EditorState, issue: Issue): { from: number; 
 export function whyNoAction(state: EditorState, issue: Issue): string | null {
   if (actionsFor(state, issue).length) return null;
   const fallback = "Changing it here would change what's saved.";
-  if (issue.fix) return blocker(state, issue.from, issue.to, false) ?? fallback;
+  if (issue.fix) {
+    const same = layersOf(state).alts.some((a) => a.from === issue.from && a.to === issue.to);
+    if (same) return "It's an alternative already. ⌥J and ⌥K switch its versions.";
+    return blocker(state, issue.from, issue.to, false) ?? fallback;
+  }
   if (CUTS.includes(issue.kind)) {
     const inAlt = layersOf(state).alts.some((a) => a.from < issue.to && a.to > issue.from);
-    return inAlt ? "It's inside an alternative, where a ghost isn't saved." : fallback;
+    return inAlt ? "It's inside an alternative, where a ghost isn't saved. Select the whole alternative and press ⌘/." : fallback;
   }
   if (SENTENCES.includes(issue.kind) || issue.kind === "hidden") {
     const range = sentenceAround(state, issue);
@@ -136,6 +154,13 @@ export interface RewriteTarget {
 function rewriteTarget(state: EditorState, issue: Issue): RewriteTarget | null {
   const range = rewriteRange(state, issue);
   return range && { ...range, kind: issue.kind, phrase: state.doc.sliceString(issue.from, issue.to) };
+}
+
+/** Review's "Use" button: the fix of the popover's mark, or of the mark at the caret. */
+export function useFixAt(state: EditorState): TransactionSpec | null {
+  const sel = state.selection.main;
+  const issue = popoverAt(state) ?? (sel.empty ? issueAt(state, sel.head) : null);
+  return issue && applyFix(state, issue);
 }
 
 /** ⌥↩: the first action for the mark at the caret, as a change, or as the text for Claude to rewrite. */
@@ -195,23 +220,35 @@ const HINTS: Record<PopoverAction["kind"], string> = {
 type Rewrite = (target: RewriteTarget) => void;
 const rewriteFacet = Facet.define<Rewrite, Rewrite>({ combine: (all) => all[0] ?? (() => {}) });
 
-function tooltipFor(issue: Issue): Tooltip {
+/** What the popover says about a mark: its title, explanation, reason for no action, actions, and key hint. */
+export function popoverContent(state: EditorState, issue: Issue) {
+  // A hard sentence's word count is the one Review counts: prose only, as its note says.
+  const words = issue.note.match(/(\d+) words/)?.[1];
+  const text = issue.kind === "grammar" ? issue.note : words ? `${words} words. ${ADVICE[issue.kind]}` : ADVICE[issue.kind];
+  const actions = actionsFor(state, issue);
   return {
-    pos: issue.from,
-    end: issue.to,
+    title: TITLES[issue.kind],
+    text,
+    why: whyNoAction(state, issue),
+    actions,
+    hint: actions.length ? `⌥↩ ${KEY_HINTS[actions[0].kind]} · esc closes` : null,
+  };
+}
+
+function tooltipFor(open: Open): Tooltip {
+  return {
+    pos: open.at,
     create(view) {
+      const issue: Issue = open;
+      const { title: heading, text: advice, why, actions, hint: keys } = popoverContent(view.state, issue);
       const dom = document.createElement("div");
       dom.className = "hl-pop";
       const title = dom.appendChild(document.createElement("div"));
       title.className = `hl-pop-title hl-pop-${issue.kind}`;
-      title.textContent = TITLES[issue.kind];
-      const words = view.state.doc.sliceString(issue.from, issue.to).match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
-      const advice = issue.kind === "grammar" ? issue.note : SENTENCES.includes(issue.kind) && issue.kind !== "passive" ? `${words} words. ${ADVICE[issue.kind]}` : ADVICE[issue.kind];
+      title.textContent = heading;
       const text = dom.appendChild(document.createElement("p"));
       text.className = "hl-pop-text";
       text.textContent = advice;
-      const actions = actionsFor(view.state, issue);
-      const why = whyNoAction(view.state, issue);
       if (why) {
         const line = dom.appendChild(document.createElement("p"));
         line.className = "hl-pop-why";
@@ -231,7 +268,7 @@ function tooltipFor(issue: Issue): Tooltip {
         }
         const hint = dom.appendChild(document.createElement("p"));
         hint.className = "hl-pop-hint";
-        hint.textContent = `⌥↩ ${KEY_HINTS[actions[0].kind]} · esc closes`;
+        hint.textContent = keys;
       }
       return { dom };
     },
@@ -248,6 +285,18 @@ function run(view: EditorView, issue: Issue, action: PopoverAction) {
     if (spec) view.dispatch(spec);
   }
   view.focus();
+}
+
+/** ⌥↩, from the key or the palette: runs the first action at the caret. False when there is none. */
+export function runFirstAction(view: EditorView): boolean {
+  const next = firstAction(view.state);
+  if (!next) return false;
+  if (next.spec) view.dispatch(next.spec);
+  else if (next.rewrite) {
+    view.dispatch(closePopover);
+    view.state.facet(rewriteFacet)(next.rewrite);
+  }
+  return true;
 }
 
 /** The popover, its click, ⌥↩, and Esc. `onRewrite` runs Claude's rewrite of a range. */
@@ -274,19 +323,7 @@ export function popover(onRewrite?: Rewrite) {
             return true;
           },
         },
-        {
-          key: "Alt-Enter",
-          run: (view) => {
-            const next = firstAction(view.state);
-            if (!next) return false;
-            if (next.spec) view.dispatch(next.spec);
-            else if (next.rewrite) {
-              view.dispatch(closePopover);
-              view.state.facet(rewriteFacet)(next.rewrite);
-            }
-            return true;
-          },
-        },
+        { key: "Alt-Enter", run: runFirstAction },
       ]),
     ),
   ];

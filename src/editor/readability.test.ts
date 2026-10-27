@@ -337,6 +337,90 @@ describe("suggestions", () => {
     ]);
   });
 
+  it("see a participle after a contraction, a not, an adverb, or a question", () => {
+    expect(fixes("She's made a choice. We haven't made a choice. He has finally made a choice. Has she made a choice?")).toEqual([
+      ["made a choice", "chosen"],
+      ["made a choice", "chosen"],
+      ["made a choice", "chosen"],
+      ["made a choice", "chosen"],
+    ]);
+  });
+
+  it("take a statement for one, and look far enough back", () => {
+    expect(fixes("The truth is we made a choice. Sally's family made a choice. We haven't recently made a choice.")).toEqual([
+      ["made a choice", "chose"],
+      ["made a choice", "chose"],
+      ["made a choice", "chosen"],
+    ]);
+    expect(fixes("We'll have the ability to swim. We cannot have the ability to swim.")).toEqual([]);
+  });
+
+  it("offer no can after a negated or questioning modal", () => {
+    const text = "We will not have the ability to stop it. We won't have the ability to stop it. Will they have the ability to stop it?";
+    expect(found(text).filter(([k]) => k === "hidden")).toHaveLength(3);
+    expect(fixes(text)).toEqual([]);
+  });
+
+  it("leave a negative without a suggestion where the positive word won't fit", () => {
+    const text = "You do not have to go. She does not have any. It does not have a menu.";
+    expect(found(text)).toEqual([
+      ["negative", "do not have"],
+      ["negative", "does not have"],
+      ["negative", "does not have"],
+    ]);
+    expect(checkPage(text).issues.map((i) => [i.note, i.fix])).toEqual([
+      ["Negative. Say what is, not what isn't.", undefined],
+      ["Negative. Say what is, not what isn't.", undefined],
+      ["Negative. Try “lacks”.", "lacks"],
+    ]);
+  });
+
+  it("leave of course out of a hidden action, as a filler of its own", () => {
+    const text = "He made a decision of course.";
+    expect(fixes(text)).toEqual([["made a decision", "decided"]]);
+    expect(found(text, ["filler"])).toEqual([["filler", "of course"]]);
+  });
+
+  it("keep a negative's suggestion before to, unless the negative is have", () => {
+    expect(fixes("It is not possible to go. He did not remember to call.")).toEqual([
+      ["not possible", "impossible"],
+      ["did not remember", "forgot"],
+    ]);
+  });
+
+  it("take in the of after a hidden action, so the verb reads right", () => {
+    expect(fixes("They carried out a review of the code. We conducted an analysis of the data. We made use of it.")).toEqual([
+      ["carried out a review of", "reviewed"],
+      ["conducted an analysis of", "analyzed"],
+      ["made use of", "used"],
+    ]);
+  });
+
+  it("offer more only where no word before it asks for a noun, and many where one may", () => {
+    expect(fixes("His additional work. The additional cost. The numerous reasons. A numerous crowd.")).toEqual([
+      ["numerous", "many"],
+    ]);
+  });
+
+  it("offer no simpler word that breaks the words around it", () => {
+    const text = "We paid an additional fee. It needs additional work. I do not often see him. It is not often that we win. We are not often late.";
+    expect(found(text, ["simpler"])).toHaveLength(5);
+    expect(fixes(text)).toEqual([
+      ["additional", "more"],
+      ["not often", "rarely"],
+    ]);
+  });
+
+  it("follow the spelling rules for a verb's forms, and the person of each form of be", () => {
+    expect(fixes("He walked quickly home.")).toEqual([["walked quickly", "hurried"]]);
+    expect(fixes("I am in agreement with you. Being in agreement with them helps.")).toEqual([
+      ["am in agreement with", "agree with"],
+      ["Being in agreement with", "Agreeing with"],
+    ]);
+    // "Has been able to" would need a participle of "can", which doesn't exist.
+    expect(fixes("She has been able to swim.")).toEqual([]);
+  });
+
   it("start a suggestion with a capital where the marked text does", () => {
     expect(fixes("Utilize it. Not many came. Made a decision.")).toEqual([
       ["Utilize", "Use"],

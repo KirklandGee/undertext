@@ -151,19 +151,21 @@ update as you type.
 
 **Click a highlight** to see why it's marked and what to do. A suggestion, in the form and case of
 your words, becomes an alternative, and ⌥K brings yours back. An adverb, qualifier, intensifier, or
-filler can be ghosted, so you read the sentence without it. Passive voice and hard sentences offer
-"Rewrite with Claude": Claude rewrites the sentence to fix it, and the rewrites that the checks no
-longer mark join it as alternatives. Ask again for more. ⌥↩ does the first of these at the cursor.
-Where none fits, say in code or inside an alternative, the popover says why. It closes when you
-type, move off the mark, or press Esc.
+filler can be ghosted, so you read the sentence without it. Passive voice, hard sentences, and
+hidden actions with no suggestion offer "Rewrite with Claude": Claude rewrites the sentence to fix
+it, and the rewrites that the checks no longer mark join it as alternatives. Ask again for more.
+Only that button, ⌥↩ on such a mark, or its ⌘K entry sends the paragraph to Claude. ⌥↩ does the first action at
+the cursor, and ⌘K lists it too. Where none fits, say in code or inside an alternative, the popover
+says why. It closes when you type, move off the mark, or press Esc.
 
 The AI features are optional. They never rewrite your text on their own: every result is something
 you can see and undo.
 
 - **Alternatives (⌘⇧G):** about 6 suggestions join the word's versions. Your current text stays.
 - **Find writing issues:** Claude marks grammar, spelling, and wrong words in pink, each with a
-  reason and a fix. Review opens to show them. Click one, or put the caret on it and press ⌥↩: the
-  fix becomes an alternative, and ⌥K restores your text. A mark goes away when you edit its text.
+  reason and a fix. Review opens to show them. Click one and use its button, or put the caret on it
+  and press ⌥↩: the fix becomes an alternative, and ⌥K restores your text. A mark goes away when
+  you edit its text.
   Code is left alone.
 - **Fix punctuation and typos:** each fix becomes an alternative with the fix active. ⌥K restores
   your text.

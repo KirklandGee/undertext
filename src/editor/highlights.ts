@@ -1,6 +1,6 @@
-import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { ChangeSet, EditorSelection, EditorState, StateEffect, StateField, TransactionSpec } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
+import { articleFix, BLOCK_START, leadLength, touchesCode } from "./commands";
 import { Alt, newId } from "./format";
 import { layersOf, mapLayers, setLayers } from "./layers";
 import { checkPage, Issue, Kind, Report } from "./readability";
@@ -154,27 +154,6 @@ export function jumpToIssue(state: EditorState, kinds: readonly Kind[], dir: 1 |
   return { selection: EditorSelection.cursor(issue.from), effects: EditorView.scrollIntoView(issue.from, { y: "center" }) };
 }
 
-const CODE = ["InlineCode", "FencedCode", "CodeBlock"];
-/** What may come before a line's first word: indent, quote markers, and list markers. */
-const LINE_LEAD = /^(?:[ \t]*(?:>|(?:[-*+]|\d{1,9}[.)])(?=[ \t])))*[ \t]*/;
-/** How many characters of `text` are indent, quote markers, and list markers. */
-export const leadLength = (text: string) => LINE_LEAD.exec(text)![0].length;
-/** Text that would make a block of its own at the start of a line. */
-export const BLOCK_START = /^(?:[#>*+=_|<~-]|\d+[.)])/;
-
-/** Whether `from`–`to` touches code. An alternative there would be saved as literal text. */
-export function touchesCode(state: EditorState, from: number, to: number): boolean {
-  let code = false;
-  (ensureSyntaxTree(state, to, 200) ?? syntaxTree(state)).iterate({
-    from,
-    to,
-    enter: (n) => {
-      if (CODE.includes(n.name)) code = true;
-      return !code;
-    },
-  });
-  return code;
-}
 
 /**
  * Where a fix of `from`–`to` can go as an alternative. The file format trims each variant, so a
@@ -229,7 +208,9 @@ export function applyFix(state: EditorState, issue: Issue): TransactionSpec | nu
   if (!fit) return null;
   const { fix } = fit;
   const original = state.doc.sliceString(fit.from, fit.to);
-  const changes = state.changes({ from: fit.from, to: fit.to, insert: fix });
+  // "An initial test" becomes "a first test", as switching an alternative's variant does.
+  const article = articleFix(state, fit.from, fix);
+  const changes = state.changes([...(article ? [article] : []), { from: fit.from, to: fit.to, insert: fix }]);
   const mapped = mapLayers(layersOf(state), changes);
   const from = changes.mapPos(fit.from, -1);
   const alt: Alt = { from, to: from + fix.length, id: newId(), variants: [original, fix], active: 1, ai: [fix] };

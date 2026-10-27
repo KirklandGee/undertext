@@ -1,4 +1,5 @@
 import { isolateHistory } from "@codemirror/commands";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { ChangeSpec, EditorSelection, EditorState, StateCommand, TransactionSpec } from "@codemirror/state";
 import { Alt, Layers, newId, parseInline, serializeBlock, Span, Version } from "./format";
 import { blockLines, layersOf, mapLayers, setLayers } from "./layers";
@@ -133,9 +134,15 @@ export function addAiAlternatives(state: EditorState, id: string, texts: string[
   const variants = syncedVariants(state, alt);
   const seen = new Set(variants.map((v) => v.toLowerCase()));
   const added: string[] = [];
+  // Text that would save a different page, or show a different one: a line break, a backtick or
+  // HTML, which can hide code, half of some bold or italics, or block markup where the alternative
+  // starts a line.
+  const line = state.doc.lineAt(alt.from);
+  const startsLine = leadLength(line.text) >= alt.from - line.from;
   for (const raw of texts) {
     const text = raw.trim();
-    if (!text || text.includes("\n") || seen.has(text.toLowerCase())) continue;
+    if (!text || /[\r\n`<]/.test(text) || unbalancedMarkup(text) || (startsLine && BLOCK_START.test(text))) continue;
+    if (seen.has(text.toLowerCase())) continue;
     seen.add(text.toLowerCase());
     variants.push(text);
     added.push(text);
@@ -222,7 +229,7 @@ export function jumpToItem(
 // a / an
 
 /** The change that fixes "a"/"an" right before `from` for `word`, if one is needed. */
-function articleFix(state: EditorState, from: number, word: string): { from: number; to: number; insert: string } | null {
+export function articleFix(state: EditorState, from: number, word: string): { from: number; to: number; insert: string } | null {
   const line = state.doc.lineAt(from);
   const winStart = Math.max(line.from, from - 12);
   const before = state.doc.sliceString(winStart, from);
@@ -375,14 +382,57 @@ export function union(spans: Span[]): Span[] {
   return out;
 }
 
+const CODE = ["InlineCode", "FencedCode", "CodeBlock"];
+
+/** Whether `from`–`to` touches code. An alternative or a ghost there would be saved as literal text. */
+export function touchesCode(state: EditorState, from: number, to: number): boolean {
+  let code = false;
+  (ensureSyntaxTree(state, to, 200) ?? syntaxTree(state)).iterate({
+    from,
+    to,
+    enter: (n) => {
+      if (CODE.includes(n.name)) code = true;
+      return !code;
+    },
+  });
+  return code;
+}
+
+/** What may come before a line's first word: indent, quote markers, list markers, and a task box. */
+const LINE_LEAD = /^(?:[ \t]*(?:>|(?:[-*+]|\d{1,9}[.)])(?:[ \t]+\[[ xX]\])?(?=[ \t])))*[ \t]*/;
+/** How many characters of `text` are indent, quote markers, list markers, and a task box. */
+export const leadLength = (text: string) => LINE_LEAD.exec(text)![0].length;
+/** Text that starts a block of its own at the start of a line: a heading, quote, list item, rule, fence, table, or HTML. */
+export const BLOCK_START = /^(?:#{1,6}(?:\s|$)|>|[-*+](?:\s|$)|\d{1,9}[.)](?:\s|$)|[-*_](?:\s*[-*_]){2,}\s*$|=+\s*$|`{3}|~{3}|\||<[a-zA-Z/!?])/;
+
+/** Whether text opens or closes bold, italics, or strikethrough without the other end. */
+export function unbalancedMarkup(text: string): boolean {
+  const strong = text.split("**").length - 1;
+  const em = (text.replace(/\*\*/g, "").match(/\*/g) ?? []).length;
+  const under = (text.match(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu) ?? []).length;
+  const strike = text.split("~~").length - 1;
+  return [strong, em, under, strike].some((n) => n % 2 === 1);
+}
+
 /** Whether a ghost on `from`–`to` would cover only part of an alternative. A save loses such a ghost. */
 export const cutsAlternative = (state: EditorState, from: number, to: number) =>
   layersOf(state).alts.some((a) => a.from < to && a.to > from && (a.from < from || a.to > to));
 
-/** Why ⌘/ won't ghost the selection, or null when it will ghost or revive it. */
+/**
+ * Why ⌘/ won't ghost or revive the selection, or null when it will: either way, no ghost may be
+ * left on part of an alternative.
+ */
 export function ghostBlocked(state: EditorState): string | null {
   const { from, to, empty } = state.selection.main;
-  if (empty || layersOf(state).ghosts.some((g) => g.from < to && g.to > from)) return null;
+  if (empty) return null;
+  const ghosts = layersOf(state).ghosts;
+  if (ghosts.some((g) => g.from < to && g.to > from)) {
+    const left = subtract(ghosts, from, to);
+    return left.some((g) => cutsAlternative(state, g.from, g.to))
+      ? "A ghost on part of an alternative isn't saved. Revive all of it, or none."
+      : null;
+  }
+  if (touchesCode(state, from, to)) return "Code can't be ghosted: a save would write the ghost into the code.";
   return cutsAlternative(state, from, to) ? "A ghost on part of an alternative isn't saved. Ghost all of it, or none." : null;
 }
 
@@ -394,6 +444,7 @@ export function ghostAt(state: EditorState, pos: number): Span | null {
 export const toggleGhost: StateCommand = ({ state, dispatch }) => {
   const { from, to, empty } = state.selection.main;
   const l = layersOf(state);
+  if (ghostBlocked(state)) return false;
   let ghosts: Span[];
   if (empty) {
     const g = ghostAt(state, from);
@@ -401,8 +452,6 @@ export const toggleGhost: StateCommand = ({ state, dispatch }) => {
     ghosts = l.ghosts.filter((x) => x !== g);
   } else if (l.ghosts.some((g) => g.from < to && g.to > from)) {
     ghosts = subtract(l.ghosts, from, to);
-  } else if (ghostBlocked(state)) {
-    return false;
   } else {
     ghosts = union([...l.ghosts, { from, to }]);
   }

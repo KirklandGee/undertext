@@ -64,6 +64,8 @@ export interface PaletteContext {
     ghostLab(): void;
     /** Ghosts or revives the selection, or says why it can't. */
     ghost(): void;
+    /** ⌥↩: the first action for the Review mark at the caret. */
+    firstAction(): void;
     clearLab(): void;
     setKey(): void;
     connectSubscription(): void;
@@ -165,6 +167,16 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       shortcut: "⌥↩",
       keywords: "grammar writing issue apply suggestion",
       run: actions.useFix,
+    });
+  }
+  if (info.checks?.action) {
+    add({
+      id: "lab.firstAction",
+      group: "Review",
+      title: info.checks.action,
+      shortcut: "⌥↩",
+      keywords: "ghost rewrite claude mark highlight",
+      run: actions.firstAction,
     });
   }
   add({ id: "lab.issues", group: "Review", title: "Find writing issues", keywords: "ai grammar style spelling hemingway", run: actions.findIssues });

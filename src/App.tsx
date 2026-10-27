@@ -50,17 +50,11 @@ import {
   wordRangeAt,
 } from "./editor/commands";
 import { parsePage } from "./editor/format";
-import {
-  applyFix,
-  HighlightSettings,
-  issueAt,
-  setHighlights,
-  setWritingIssues,
-} from "./editor/highlights";
+import { HighlightSettings, setHighlights, setWritingIssues } from "./editor/highlights";
 import { clearLab, ghostLabNotice, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
 import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layers";
 import { Kind } from "./editor/readability";
-import { jumpToMark, RewriteTarget } from "./editor/popover";
+import { jumpToMark, RewriteTarget, runFirstAction, useFixAt } from "./editor/popover";
 import { createEditorState, describe, EditorHandlers, EditorInfo, pageMarkdown } from "./editor/setup";
 import {
   askReloadChanged,
@@ -417,8 +411,7 @@ export default function App() {
   /** The writing issue at the caret becomes an alternative with its fix active. */
   const useFix = () => {
     const state = view().state;
-    const issue = issueAt(state, state.selection.main.head);
-    const spec = issue && applyFix(state, issue);
+    const spec = useFixAt(state);
     if (spec) dispatch(spec);
     view().focus();
   };
@@ -1009,6 +1002,10 @@ export default function App() {
               makeCuts: () => finishLab(makeCuts(view().state)),
               ghostLab,
               ghost,
+              firstAction: () => {
+                runFirstAction(view());
+                view().focus();
+              },
               clearLab: () => finishLab(clearLab()),
               setKey: () => void openKeyDialog(),
               connectSubscription: () => void openSubscriptionDialog(),

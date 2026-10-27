@@ -250,15 +250,27 @@ Phases 4 and 5 don't need the checker, so either can come next.
   move off the mark, select, press Esc, or close Review. So it never points at text that changed,
   as Hemingway's can.
 - Each action keeps a way back. A suggestion becomes an alternative. A word to cut gets ghosted,
-  not deleted. Passive voice and hard sentences get "Rewrite with Claude". Its prompt names the goal,
+  not deleted. Passive voice, hard sentences, and hidden actions with no suggestion get "Rewrite
+  with Claude". Its prompt names the goal,
   such as the active voice, and the live checks drop any rewrite they would still mark. The first
   version reused ⌘⇧G, whose drop-in prompt kept 4 of 6 rewrites passive. The prompt names the words
   the checks flagged and the rewrites the sentence has, and a second ask adds to them. ⌥↩ runs the
   first action. Where no action fits, the popover says why in a line: code, a ghost, an
-  alternative, or a line break in the way.
+  alternative, a line break, or bold or italics that the sentence cuts through.
 - Suggestions take the form and case of the marked words: "made a decision" → "decided", "has made
-  a choice" → "chosen", "Not many" → "Few". Where no form fits, as "will be able to" → "can",
-  there's no suggestion.
+  a choice" → "chosen", "She's made a choice" → "chosen", "Not many" → "Few". A hidden action takes
+  the "of" after it ("carried out a review of" → "reviewed"), and an "a" or "an" before a suggestion
+  changes to fit. Where no form fits, as "will be able to" → "can", "do not have to" → "lack to",
+  or "an additional fee" → "an more fee", the mark stays with no suggestion.
+- The popover sits where you clicked, and closes when the layers or Claude's issues change, since
+  either can change what it offers. Review's panel and its Use button, the palette, and ⌥↩ follow
+  the popover's mark.
+- No layer may sit where a save can't keep it. ⌘/ won't ghost code, or leave a ghost on part of an
+  alternative, and says why. Paste quietly leaves out a ghost or an alternative that would land
+  inside an alternative; the words it pastes stay.
+- Rewrites from Claude with a line break, a backtick, HTML, half of some bold or italics, or block
+  markup where the sentence starts a line are dropped. The first three can save a page that
+  reopens differently; the others would change how it looks. ⌘⇧G drops them too.
 - The checks run with Review closed too, so the top bar shows the grade. Highlights still show
   only while Review is open.
 - Writing issues come from Claude on request, never as you type, so nothing is sent until you ask.
