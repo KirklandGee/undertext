@@ -5,7 +5,21 @@
 // The grade is the Automated Readability Index: 4.71 × letters/words + 0.5 × words/sentences −
 // 21.43, rounded. A sentence of 14 or more words is hard at grade 10 and very hard at 14.
 
-export const KINDS = ["veryHard", "hard", "adverb", "passive", "qualifier", "intensifier", "filler", "simpler"] as const;
+// "grammar" comes from Claude, on request (src/ai/tasks.ts). The rest come from here.
+export const KINDS = [
+  "veryHard",
+  "hard",
+  "adverb",
+  "passive",
+  "qualifier",
+  "intensifier",
+  "weakVerb",
+  "filler",
+  "hidden",
+  "negative",
+  "simpler",
+  "grammar",
+] as const;
 export type Kind = (typeof KINDS)[number];
 
 export interface Issue {
@@ -19,6 +33,8 @@ export interface Issue {
 export interface Report {
   /** In page order. A sentence comes before the words marked inside it. */
   issues: Issue[];
+  /** Weakener marks, each counted once: "really" is an intensifier and an adverb, but one mark. */
+  weakeners: number;
   /** Counts for the prose only: no headings, code, or link addresses. */
   words: number;
   letters: number;
@@ -131,41 +147,32 @@ export function sentences(text: string): Span[] {
 // ---------------------------------------------------------------------------
 // Words
 
-/**
- * Matches any of the phrases as whole words, in any case. A space matches any run of space. `raw`
- * holds patterns that are already regular expressions.
- */
-const phrases = (list: string[], raw: string[] = []) =>
+// The weakener lists follow what Hemingway's web editor marked on test sentences, in October 2026.
+// They are short on purpose: a mark that is often wrong teaches you to ignore the marks.
+
+/** Matches any of the phrases as whole words, in any case. A space matches any run of space. */
+const phrases = (list: string[]) =>
   new RegExp(
-    `(?<![\\p{L}\\p{N}'’-])(?:${[
-      ...raw,
-      ...list
-        .sort((a, b) => b.length - a.length)
-        .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+").replace(/'/g, "['’]")),
-    ].join("|")})(?![\\p{L}\\p{N}'’-])`,
+    `(?<![\\p{L}\\p{N}'’-])(?:${list
+      .sort((a, b) => b.length - a.length)
+      .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+").replace(/'/g, "['’]"))
+      .join("|")})(?![\\p{L}\\p{N}'’-])`,
     "giu",
   );
 
-const QUALIFIERS = phrases(
-  [
-    "I think", "I believe", "I feel", "I guess", "I suppose", "in my opinion", "maybe", "perhaps", "possibly",
-    "probably", "presumably", "apparently", "seemingly", "arguably", "somewhat", "fairly", "quite", "just",
-    "more or less", "to some extent",
-  ],
-  // "Rather than" and "what kind of" are not hedges.
-  ["rather(?!\\s+than)", "(?<!(?:what|this|that|the|any|some|every|which|one)\\s+)(?:sort|kind)\\s+of"],
-);
+/** The form a phrase is listed under: lower case, single spaces, straight apostrophes. */
+const key = (match: string) => match.toLowerCase().replace(/\s+/g, " ").replace(/’/g, "'");
+
+const QUALIFIERS = phrases(["I think", "I believe", "I feel", "in my opinion", "maybe", "perhaps", "possibly", "just"]);
 
 const INTENSIFIERS = phrases([
-  "very", "really", "extremely", "totally", "absolutely", "completely", "incredibly", "highly", "truly", "utterly",
-  "entirely", "literally", "seriously", "awfully", "terribly", "insanely", "hugely", "remarkably", "exceptionally",
+  "very", "really", "extremely", "totally", "absolutely", "completely", "incredibly", "utterly", "entirely",
+  "remarkably", "exceptionally", "hugely",
 ]);
 
 const FILLERS = phrases([
-  "basically", "actually", "essentially", "honestly", "obviously", "of course", "needless to say",
-  "it goes without saying", "you know", "as a matter of fact", "at the end of the day", "for all intents and purposes",
-  "the fact that", "it is worth noting that", "it's worth noting that", "it should be noted that",
-  "it is important to note that", "in terms of", "all things considered",
+  "basically", "essentially", "of course", "needless to say", "it goes without saying", "it is worth noting",
+  "it should be noted", "it is important to note",
 ]);
 
 /** Word or phrase → the plainer one. A single word also matches its -s, -ed, and -ing forms. */
@@ -175,14 +182,92 @@ const SIMPLER: Record<string, string> = {
   assistance: "help", "at this point in time": "now", attempt: "try", beneficial: "helpful", commence: "start",
   component: "part", consequently: "so", construct: "build", demonstrate: "show", "due to the fact that": "because",
   eliminate: "cut", endeavor: "try", expedite: "speed up", facilitate: "help", finalize: "finish", frequently: "often",
-  "has the ability to": "can", "in order to": "to", "in spite of the fact that": "although", "in the event that": "if",
-  "in the near future": "soon", indicate: "show", initial: "first", initiate: "start", "is able to": "can",
-  leverage: "use", magnitude: "size", methodology: "method", modify: "change", numerous: "many", objective: "aim",
-  obtain: "get", "on a daily basis": "daily", optimal: "best", participate: "take part", portion: "part",
+  "in order to": "to", "in spite of the fact that": "although", "in the event that": "if",
+  "in the near future": "soon", indicate: "show", initial: "first", initiate: "start",
+  leverage: "use", magnitude: "size", methodology: "method", modify: "change", "not many": "few", "not often": "rarely",
+  numerous: "many", objective: "aim", obtain: "get", "on a daily basis": "daily", optimal: "best",
+  participate: "take part", portion: "part",
   possess: "have", "prior to": "before", purchase: "buy", regarding: "about", remainder: "rest", retain: "keep",
   "subsequent to": "after", subsequently: "later", sufficient: "enough", terminate: "end", transmit: "send",
   utilise: "use", utilization: "use", utilize: "use", "with regard to": "about", "with respect to": "about",
 };
+
+/** Verbs whose forms don't follow the rule in `verbForms`: -s, past, -ing, and past participle. */
+const IRREGULAR_VERBS: Record<string, string> = {
+  carry: "carries carried carrying carried", come: "comes came coming come", creep: "creeps crept creeping crept",
+  drink: "drinks drank drinking drunk", eat: "eats ate eating eaten", give: "gives gave giving given",
+  have: "has had having had", hurry: "hurries hurried hurrying hurried", make: "makes made making made",
+  reach: "reaches reached reaching reached", run: "runs ran running run", rush: "rushes rushed rushing rushed",
+  say: "says said saying said", slam: "slams slammed slamming slammed", snap: "snaps snapped snapping snapped",
+  speak: "speaks spoke speaking spoken", take: "takes took taking taken", tiptoe: "tiptoes tiptoed tiptoeing tiptoed",
+  tread: "treads trod treading trodden",
+};
+
+/** A verb's base, -s, past, -ing, and past participle forms. */
+function verbForms(base: string): string[] {
+  const irregular = IRREGULAR_VERBS[base];
+  if (irregular) return [base, ...irregular.split(" ")];
+  const past = base.endsWith("e") ? `${base}d` : `${base}ed`;
+  return [base, `${base}s`, past, `${base.replace(/e$/, "")}ing`, past];
+}
+const BE = ["am", "is", "are", "was", "were", "be", "been", "being"];
+
+// Weak verbs: a plain verb and an adverb that one stronger verb replaces, as in "walked slowly".
+const WEAK_PAIRS =
+  "run quickly: sprint, walk quickly: hurry, walk slowly: stroll, walk quietly: tiptoe, walk carefully: tread, " +
+  "eat quickly: gobble, move quickly: rush, move slowly: creep, look quickly: glance, look angrily: glare, " +
+  "drink quickly: gulp, say loudly: shout, say softly: murmur, say quietly: whisper, say angrily: snap, " +
+  "speak loudly: shout, speak softly: whisper, speak quietly: whisper, talk loudly: shout, talk quietly: whisper, " +
+  "close loudly: slam, laugh loudly: guffaw, laugh quietly: chuckle";
+/** "walked slowly" → "strolled": the stronger verb, in the same form. */
+const WEAK_VERB_FORMS = new Map<string, string>();
+for (const pair of WEAK_PAIRS.split(", ")) {
+  const [, verb, adverb, stronger] = pair.match(/^(\S+) (\S+): (\S+)$/)!;
+  const strong = verbForms(stronger);
+  verbForms(verb).forEach((form, i) => {
+    // "Run" is the base and the participle: the base wins.
+    if (!WEAK_VERB_FORMS.has(`${form} ${adverb}`)) WEAK_VERB_FORMS.set(`${form} ${adverb}`, strong[i]);
+  });
+}
+const WEAK_VERBS = phrases([...WEAK_VERB_FORMS.keys()]);
+
+// Hidden actions: a verb and a noun that hide a plainer verb, as in "made a decision".
+const HIDDEN_ACTIONS =
+  "make a decision: decide, reach a decision: decide, reach an agreement: agree, reach a conclusion: conclude, " +
+  "come to a conclusion: conclude, give consideration to: consider, take into consideration: consider, " +
+  "conduct an analysis: analyze, perform an analysis: analyze, make a recommendation: recommend, " +
+  "make a suggestion: suggest, make a payment: pay, make use of: use, make a choice: choose, take action: act, " +
+  "have the ability to: can, be able to: can, be in agreement with: agree with, have knowledge of: know, " +
+  "make an announcement: announce, carry out a review: review, be dependent on: depend on, " +
+  "be indicative of: indicate";
+const HIDDEN_FORMS = new Map<string, string>();
+for (const action of HIDDEN_ACTIONS.split(", ")) {
+  const [, verb, rest, plain] = action.match(/^(\S+) (.+): (.+)$/)!;
+  for (const form of verb === "be" ? BE : verbForms(verb)) HIDDEN_FORMS.set(`${form} ${rest}`, plain);
+}
+const HIDDEN = phrases([...HIDDEN_FORMS.keys()]);
+
+// Negatives that one positive word says: "does not have" → "lacks".
+const NEGATED_VERBS: Record<string, string> = {
+  have: "lacks lack lacked", include: "excludes exclude excluded", remember: "forgets forget forgot",
+  accept: "rejects reject rejected", succeed: "fails fail failed", notice: "overlooks overlook overlooked",
+  agree: "disagrees disagree disagreed", "pay attention to": "ignores ignore ignored",
+};
+const NEGATIVE_FORMS = new Map([
+  ["not able to", "unable to"],
+  ["not possible", "impossible"],
+  ["not certain", "uncertain"],
+  ["not honest", "dishonest"],
+  ["not unlike", "like"],
+]);
+for (const [verb, plain] of Object.entries(NEGATED_VERBS)) {
+  const [does, doBase, did] = plain.split(" ");
+  for (const [aux, word] of [["does", does], ["do", doBase], ["did", did]]) {
+    NEGATIVE_FORMS.set(`${aux} not ${verb}`, word);
+    NEGATIVE_FORMS.set(`${aux}n't ${verb}`, word);
+  }
+}
+const NEGATIVE = phrases([...NEGATIVE_FORMS.keys()]);
 
 const forms = (word: string) =>
   word.includes(" ")
@@ -195,13 +280,15 @@ const SIMPLER_FORMS = new Map(Object.entries(SIMPLER).flatMap(([word, plain]) =>
 const SIMPLER_WORDS = phrases([...SIMPLER_FORMS.keys()]);
 
 const ADVERB = /(?<![\p{L}\p{N}'’-])\p{L}+ly(?![\p{L}\p{N}'’-])/giu;
-/** Words that end in -ly but are not adverbs, or are too common to mark. */
+/** Words that end in -ly but are not adverbs, or that Hemingway leaves alone. */
 const NOT_ADVERBS = new Set(
   (
     "only early daily weekly monthly yearly hourly nightly family reply apply supply comply imply rely ally rally " +
     "tally belly bully jelly lily fly butterfly holy ugly silly lonely lovely friendly unfriendly likely unlikely " +
     "elderly costly deadly lively curly oily hilly chilly wily italy july emily kelly sally molly holly assembly " +
-    "anomaly monopoly homily folly jolly melancholy"
+    "anomaly monopoly homily folly jolly melancholy " +
+    "usually finally recently rarely generally especially exactly currently actually approximately hardly " +
+    "immediately unfortunately definitely awfully completely"
   ).split(" "),
 );
 
@@ -220,16 +307,19 @@ const NOT_PARTICIPLES = new Set(
   "need bed red shed seed feed speed breed greed weed deed creed steed indeed hundred sacred naked wicked rugged ragged".split(" "),
 );
 
-const NOTES: Record<Exclude<Kind, "hard" | "veryHard" | "simpler">, string> = {
-  adverb: "Adverb. A stronger verb may not need it.",
+const NOTES: Record<"adverb" | "passive" | "qualifier" | "intensifier" | "filler", string> = {
+  adverb: "Adverb. Cut it if the sentence holds without it.",
   passive: "Passive voice. Say who does it.",
   qualifier: "Qualifier. It softens the point.",
   intensifier: "Intensifier. It rarely adds strength.",
   filler: "Filler. It adds words, not meaning.",
 };
 
-/** Marks in one block. Weakeners and simpler words never overlap each other; passive voice may hold them. */
-function wordIssues(text: string): Issue[] {
+/**
+ * Marks in one block. Weakeners and simpler words never overlap each other. Adverbs and passive voice
+ * may: "really" is an intensifier and an adverb, as Hemingway counts it.
+ */
+function wordIssues(text: string): { issues: Issue[]; weakeners: number } {
   const candidates: Issue[] = [];
   const add = (re: RegExp, kind: Kind, note: (match: string) => string | null) => {
     for (const m of text.matchAll(re)) {
@@ -241,8 +331,10 @@ function wordIssues(text: string): Issue[] {
   add(FILLERS, "filler", () => NOTES.filler);
   add(QUALIFIERS, "qualifier", () => NOTES.qualifier);
   add(INTENSIFIERS, "intensifier", () => NOTES.intensifier);
-  add(SIMPLER_WORDS, "simpler", (m) => `Simpler: ${SIMPLER_FORMS.get(m.toLowerCase().replace(/\s+/g, " "))}.`);
-  add(ADVERB, "adverb", (m) => (NOT_ADVERBS.has(m.toLowerCase()) ? null : NOTES.adverb));
+  add(HIDDEN, "hidden", (m) => `Hidden action. Try “${HIDDEN_FORMS.get(key(m))}”.`);
+  add(NEGATIVE, "negative", (m) => `Negative. Try “${NEGATIVE_FORMS.get(key(m))}”.`);
+  add(WEAK_VERBS, "weakVerb", (m) => `Weak verb. Try “${WEAK_VERB_FORMS.get(key(m))}”.`);
+  add(SIMPLER_WORDS, "simpler", (m) => `Simpler: ${SIMPLER_FORMS.get(key(m))}.`);
   candidates.sort((a, b) => a.from - b.from || b.to - a.to);
 
   const kept: Issue[] = [];
@@ -250,11 +342,21 @@ function wordIssues(text: string): Issue[] {
     const last = kept[kept.length - 1];
     if (!last || c.from >= last.to) kept.push(c);
   }
+  const marks = [...kept];
+  let shared = 0;
+  for (const m of text.matchAll(ADVERB)) {
+    if (NOT_ADVERBS.has(m[0].toLowerCase())) continue;
+    const holder = marks.find((i) => i.from <= m.index && m.index < i.to);
+    // A word with a simpler alternative is marked once, as that.
+    if (holder?.kind === "simpler") continue;
+    if (holder) shared++;
+    kept.push({ from: m.index, to: m.index + m[0].length, kind: "adverb", note: NOTES.adverb });
+  }
   for (const m of text.matchAll(PASSIVE)) {
     if (NOT_PARTICIPLES.has(m[1].toLowerCase())) continue;
     kept.push({ from: m.index, to: m.index + m[0].length, kind: "passive", note: NOTES.passive });
   }
-  return kept;
+  return { issues: kept, weakeners: kept.filter((i) => i.kind !== "simpler").length - shared };
 }
 
 // ---------------------------------------------------------------------------
@@ -262,13 +364,14 @@ function wordIssues(text: string): Issue[] {
 
 interface BlockResult {
   issues: Issue[];
+  weakeners: number;
   words: number;
   letters: number;
   sentences: number;
 }
 
 function checkBlock(text: string): BlockResult {
-  const result: BlockResult = { issues: [], words: 0, letters: 0, sentences: 0 };
+  const result: BlockResult = { issues: [], weakeners: 0, words: 0, letters: 0, sentences: 0 };
   for (const s of sentences(text)) {
     const sentence = text.slice(s.from, s.to);
     const words = sentence.match(WORD)?.length ?? 0;
@@ -281,7 +384,9 @@ function checkBlock(text: string): BlockResult {
     if (grade >= 14) result.issues.push({ ...s, kind: "veryHard", note: `Very hard to read. ${words} words.` });
     else if (grade >= 10) result.issues.push({ ...s, kind: "hard", note: `Hard to read. ${words} words.` });
   }
-  result.issues.push(...wordIssues(text));
+  const marks = wordIssues(text);
+  result.issues.push(...marks.issues);
+  result.weakeners = marks.weakeners;
   return result;
 }
 
@@ -289,7 +394,7 @@ function checkBlock(text: string): BlockResult {
 const seen = new Map<string, BlockResult>();
 
 export function checkPage(page: string): Report {
-  const report: Report = { issues: [], words: 0, letters: 0, sentences: 0, grade: null };
+  const report: Report = { issues: [], weakeners: 0, words: 0, letters: 0, sentences: 0, grade: null };
   for (const block of proseBlocks(page)) {
     let result = seen.get(block.text);
     if (!result) {
@@ -298,6 +403,7 @@ export function checkPage(page: string): Report {
       seen.set(block.text, result);
     }
     for (const i of result.issues) report.issues.push({ ...i, from: i.from + block.from, to: i.to + block.from });
+    report.weakeners += result.weakeners;
     report.words += result.words;
     report.letters += result.letters;
     report.sentences += result.sentences;

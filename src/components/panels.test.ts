@@ -45,7 +45,7 @@ describe("Review's eye toggles", () => {
   });
 
   it("come back from prefs, without kinds this version doesn't know", () => {
-    expect(savedHidden({ hidden: ["adverb", "grammar", 3, "simpler"] })).toEqual(["adverb", "simpler"]);
+    expect(savedHidden({ hidden: ["adverb", "weasel", 3, "simpler"] })).toEqual(["adverb", "simpler"]);
     expect(savedHidden({ hidden: "adverb" })).toEqual([]);
     expect(savedHidden({})).toEqual([]);
   });

@@ -1,6 +1,7 @@
 import { EditorState, TransactionSpec } from "@codemirror/state";
 import { blockAt, countWords, findAlt, syncedVariants } from "../editor/commands";
 import { Alt, newId } from "../editor/format";
+import { WritingIssue } from "../editor/highlights";
 import { LabSpan } from "../editor/lab";
 import { layersOf, mapLayers, setLayers } from "../editor/layers";
 import { callClaude } from "./client";
@@ -327,6 +328,58 @@ export function wordsIn(state: EditorState, spans: LabSpan[]): number {
 }
 
 // ---------------------------------------------------------------------------
+// 5. Writing issues: grammar and style, marked pink in Review, each with a fix
+
+interface WritingAnswer {
+  paragraph: number;
+  find: string;
+  replace: string;
+  reason: string;
+}
+
+export async function findWritingIssues(state: EditorState): Promise<WritingIssue[]> {
+  const paras = docParagraphs(state);
+  if (!paras.length) return [];
+  const answer = await callClaude<{ issues: WritingAnswer[] }>(
+    {
+      system:
+        `${VOICE} Find writing issues: grammar, spelling, punctuation, a wrong or missing word, a broken idiom, ` +
+        "a sentence fragment, or words that don't agree. Don't flag style choices that are correct, and don't " +
+        "rewrite for taste. Don't flag headings. For each issue, quote a short snippet (a few words, unique within " +
+        "its paragraph) as `find`, give the same snippet corrected as `replace`, and a reason in under 10 words. " +
+        "Mark at most 30. Return an empty list if there are none.",
+      prompt: numbered(paras),
+      schema: object({ issues: list(object({ paragraph: int, find: str, replace: str, reason: str })) }),
+      effort: "medium",
+      maxTokens: 16000,
+    },
+    () => ({ issues: mockWritingIssues(paras) }),
+  );
+  return writingIssuesFrom(state, answer.issues);
+}
+
+/**
+ * Finds each quote on the page and marks the words that change, with the fix for them. A change
+ * with no word to swap, such as a deletion, marks the whole quote. Headings and ghosts are skipped.
+ */
+export function writingIssuesFrom(state: EditorState, answers: WritingAnswer[]): WritingIssue[] {
+  const paras = docParagraphs(state);
+  const used: Range[] = [];
+  const issues: WritingIssue[] = [];
+  for (const a of answers) {
+    if (a.find === a.replace) continue;
+    const found = locate(paras, a.paragraph, a.find, used);
+    if (!found || isHeading(state, found.from) || ghostedEntirely(state, found)) continue;
+    used.push(found);
+    const change = narrowChange(a.find, a.replace);
+    const from = found.from + (change?.start ?? 0);
+    const to = change ? from + change.original.length : found.to;
+    issues.push({ from, to, kind: "grammar", note: a.reason, fix: change ? change.fixed : a.replace });
+  }
+  return issues.sort((x, y) => x.from - y.from);
+}
+
+// ---------------------------------------------------------------------------
 // Development mocks (plain browser only)
 
 function mockFixes(paras: DocParagraph[]): { fixes: Fix[] } {
@@ -335,6 +388,22 @@ function mockFixes(paras: DocParagraph[]): { fixes: Fix[] } {
     for (const m of p.text.matchAll(/\bteh\b/g)) fixes.push({ paragraph: p.n, find: m[0], replace: "the" });
   }
   return { fixes };
+}
+
+/** A doubled word, and "And" at the start of a sentence. */
+function mockWritingIssues(paras: DocParagraph[]): WritingAnswer[] {
+  const issues: WritingAnswer[] = [];
+  for (const p of paras) {
+    for (const m of p.text.matchAll(/\b(\w+) \1\b/g)) {
+      issues.push({ paragraph: p.n, find: m[0], replace: m[1], reason: "The same word twice." });
+    }
+    for (const m of p.text.matchAll(/(?:^|[.!?] )And (\w+)/g)) {
+      const find = m[0].replace(/^[.!?] /, "");
+      const word = m[1][0].toUpperCase() + m[1].slice(1);
+      issues.push({ paragraph: p.n, find, replace: word, reason: "A sentence that starts with And." });
+    }
+  }
+  return issues;
 }
 
 function mockCuts(paras: DocParagraph[]): { paragraph: number; text: string }[] {

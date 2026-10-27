@@ -1,7 +1,7 @@
 # Plan: side panels with one job each, and room for Hemingway's checks
 
-Status: phase 1 and the first slice of live checks built, 2026-10-26. See "Decisions taken" and
-"Open decisions" at the end.
+Status: phase 1 and most of phase 3 built, 2026-10-26. See "Decisions taken" and "Open decisions"
+at the end.
 
 ## Goals
 
@@ -151,16 +151,35 @@ tests run on plain strings. `src/editor/highlights.ts` draws them on the page.
 - **Grade**: the Automated Readability Index, rounded, never below zero.
 - **Hard and very hard**: a sentence of 14 or more words, by its own grade: hard from 10, very hard
   from 14.
-- **Adverbs**: -ly words, minus a list of words that only end in -ly (family, only, early).
+The weakener lists follow what Hemingway's web editor marked on about 650 test sentences, one at
+a time. They are short on purpose: a mark that is often wrong teaches you to ignore the marks.
+
+- **Adverbs**: -ly words, minus words that only end in -ly (family, only, early) and the ones
+  Hemingway leaves alone (usually, finally, actually).
 - **Passive voice**: a form of "be", maybe an -ly word, then a past participle.
-- **Qualifiers, intensifiers, fillers**: word and phrase lists. "Rather than" and "what kind of"
-  don't count.
-- **Simpler words**: a phrase list (utilize → use, in order to → to), with -s, -ed, and -ing forms.
+- **Qualifiers, intensifiers, fillers**: Hemingway's short lists. "Probably" is only an adverb, and
+  "rather" and "kind of" aren't marked.
+- **Weak verbs**: a plain verb and an adverb that one stronger verb replaces, in the same tense
+  (walked slowly → strolled, said loudly → shouted). "Get" isn't marked.
+- **Hidden actions**: exact phrases, in any tense (made a decision → decide, is able to → can).
+  "Made the decision" and "made a quick decision" aren't marked.
+- **Negatives**: a negative that one positive word says (does not have → lacks, did not succeed →
+  failed). A plain "do not want" isn't marked. Hemingway's category is "negative or indirect
+  phrases", but it marked none of the indirect openings we tried.
+- **Simpler words**: a phrase list (utilize → use, in order to → to, not many → few), with -s,
+  -ed, and -ing forms.
 
 The longer match wins where two overlap, so "due to the fact that" is one simpler phrase, not a
-filler inside it. Passive voice may hold other marks. Each paragraph's result is kept, so an edit
-checks only the paragraph it changed: on a 20,000-word page the first check takes 16 ms, and each
-edit after it 0.4 ms.
+filler inside it. Adverbs and passive voice may sit inside other marks, so "really" counts as an
+intensifier and an adverb, as in Hemingway. Only one tint shows, and the weakeners' total counts
+it once. An adverb inside passive voice is its own mark, as Hemingway counts it. Each paragraph's result is kept, so an edit
+checks only the paragraph it changed: on a 20,000-word page the first check takes 23 ms, and each
+edit after it 0.4 ms. The checks run with Review closed too, for the grade in the top bar.
+
+**Writing issues** come from Claude, on request: "Find writing issues" in Review or ⌘K. Each has a
+reason and a fix. Claude quotes a snippet and its corrected form; the mark covers the words that
+change. "Use" makes the fix an alternative, with the original kept. A mark moves with edits, and
+goes away when its own text changes.
 
 The rules are for English.
 
@@ -173,10 +192,10 @@ Each phase ends with the tests passing and the change tried in the app.
    features.
 2. **Checker spike, go or no-go** (skipped, 2026-10-26). The real module was built test-first
    instead, and its speed measured on a long page. See "Live checks".
-3. **Live checks** (first slice done, 2026-10-26). The module, its tests, the highlights, the
-   Review rows with counts, eyes, and jumps, and "Why it's marked" in Review. Still to do: the
-   grade in the top bar, the reason in Here, Hemingway's other weakeners (weak verbs, hidden
-   actions, negative phrases), and "More" stats.
+3. **Live checks** (mostly done, 2026-10-26). The module, its tests, the highlights, the Review
+   rows with counts, eyes, and jumps, "Why it's marked" in Review, all of Hemingway's weakeners,
+   the grade in the top bar, and writing issues from Claude. Still to do: the reason in Here, and
+   "More" stats.
 4. **Rewrite verbs in Here** (2–3 days). Simplify, Shorter, Polish, Tone, free text. Each result as
    a variant or a version, with undo and redo tests.
 5. **Feedback** (1–2 days). After deciding where its text goes.
@@ -214,6 +233,16 @@ Phases 4 and 5 don't need the checker, so either can come next.
   alternatives.
 - Ghosted text isn't checked, as it isn't counted.
 - "Why it's marked" shows in Review, under the grade, and on hover over the highlight.
+- The checks run with Review closed too, so the top bar shows the grade. Highlights still show
+  only while Review is open.
+- Writing issues come from Claude on request, never as you type, so nothing is sent until you ask.
+  Each fix becomes an alternative, as typo fixes do.
+- Writing issues are pink. Green was taken by simpler words.
+- A writing issue goes away when its own text changes, not its whole paragraph. That way using one
+  fix keeps the others in the paragraph.
+- The weakener lists copy what Hemingway marks, checked sentence by sentence in its web editor.
+  The first lists used broad patterns and marked about twice as much, much of it wrong, such as
+  every "get".
 
 ## Open decisions
 
@@ -225,7 +254,7 @@ Phases 4 and 5 don't need the checker, so either can come next.
 4. **"Why it's marked" in Here.** It shows in Review now. Also show it in the Here panel, or not.
 5. **The long-sentences check.** Today it is an instant check in Review. Live "hard" and "very
    hard" now cover it. Remove it, or keep it as a one-shot check.
-6. **Grammar.** Hemingway's green "writing issues". A Claude run that marks them, like the other
-   checks, or nothing.
-7. **The grade in the top bar.** The checks run only while Review is open, so the top bar can't
-   show a grade with Review closed. Run them always for the grade alone, or leave it in Review.
+6. **Writing issues and typo fixes.** "Find writing issues" covers most of what "Fix punctuation
+   and typos" does, one fix at a time. Keep both, or drop the typo fix.
+7. **Adverbs hidden at first.** Hemingway counts adverbs but hides their marks until you show
+   them. Undertext shows them. Do the same as Hemingway, or not.

@@ -35,8 +35,8 @@ other ways you might say them.
 - **Paragraph versions.** Fork a paragraph, rewrite it in place, and switch between the versions.
 - **Ghost.** Dim text you might cut. It stays readable but easy to ignore.
 - **Review.** A side panel that grades the page and highlights hard sentences, weakeners, and
-  simpler words as you type. Optional AI help marks, fixes, and trims, but never rewrites your text
-  on its own.
+  simpler words as you type. Optional AI help finds writing issues, marks, fixes, and trims, but
+  never rewrites your text on its own.
 - **Overflow.** A tab beside Review for leftovers you might use later.
 - **Keyboard first.** Every action has a shortcut, and ⌘K lists them all.
 
@@ -132,16 +132,19 @@ Older files wrote ghosts as `~~text~~`. Those now open as strikethrough.
 
 ## AI and Review
 
-Review is the first tab of the right panel. Press ⌘⇧E, or click the word count.
+Review is the first tab of the right panel. Press ⌘⇧E, or click the word count and grade.
 
 **Highlights.** While Review is open, the page shows what makes it harder to read, in the style of
 [Hemingway Editor](https://hemingwayapp.com). The checks run on your machine, with no AI, and
 update as you type.
 
-- **Grade:** the Automated Readability Index of the page.
+- **Grade:** the Automated Readability Index of the page. It also shows in the top bar.
 - **Hard and very hard sentences** (yellow and red): 14 words or more, from grade 10 or 14.
-- **Weakeners** (blue): adverbs, passive voice, qualifiers, intensifiers, and fillers.
+- **Weakeners** (blue): adverbs, passive voice, qualifiers, intensifiers, weak verbs (walked slowly
+  → strolled), fillers, hidden actions (made a decision → decide), and negatives (does not have →
+  lacks). The lists follow what Hemingway marks.
 - **Simpler words** (green): utilize → use, in order to → to.
+- **Writing issues** (pink): grammar and style, from Claude. See below.
 - Click a row to go to the next one. The eye hides a kind on the page but keeps its count. Put the
   caret on a highlight to read why it's marked. Ghosted text isn't checked. The rules are for
   English.
@@ -150,6 +153,9 @@ The AI features are optional. They never rewrite your text on their own: every r
 you can see and undo.
 
 - **Alternatives (⌘⇧G):** about 6 suggestions join the word's versions. Your current text stays.
+- **Find writing issues:** Claude marks grammar and style issues in pink, each with a reason and a
+  fix. Put the caret on one and choose "Use" in Review, or "Use the fix" in ⌘K: the fix becomes an
+  alternative, and ⌥K restores your text. A mark goes away when you edit its text.
 - **Fix punctuation and typos:** each fix becomes an alternative with the fix active. ⌥K restores
   your text.
 - **Checks:** weakest sentences, convoluted sentences, off-tone words, and hedges and filler. Marks

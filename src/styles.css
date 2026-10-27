@@ -18,6 +18,7 @@
   --hl-hard: rgba(235, 205, 80, 0.2);
   --hl-weak: rgba(90, 160, 245, 0.27);
   --hl-simpler: rgba(95, 200, 130, 0.22);
+  --hl-grammar: rgba(225, 105, 215, 0.26);
   --mono: "iA Writer Mono S", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
   --text-size: 15px;
   color-scheme: dark;
@@ -43,6 +44,7 @@
     --hl-hard: rgba(245, 200, 30, 0.3);
     --hl-weak: rgba(50, 130, 230, 0.2);
     --hl-simpler: rgba(40, 170, 90, 0.2);
+    --hl-grammar: rgba(200, 50, 180, 0.17);
     color-scheme: light;
   }
 }
@@ -806,13 +808,41 @@ button:focus-visible {
 .hl-passive,
 .hl-qualifier,
 .hl-intensifier,
+.hl-weakVerb,
 .hl-filler,
+.hl-hidden,
+.hl-negative,
 .hl-weak {
   background: var(--hl-weak);
 }
 
+/* A weakener inside another, such as an adverb in passive voice, adds no second tint. */
+:is(.hl-adverb, .hl-passive, .hl-qualifier, .hl-intensifier, .hl-weakVerb, .hl-filler, .hl-hidden, .hl-negative)
+  :is(.hl-adverb, .hl-passive, .hl-qualifier, .hl-intensifier, .hl-weakVerb, .hl-filler, .hl-hidden, .hl-negative) {
+  background: none;
+}
+
 .hl-simpler {
   background: var(--hl-simpler);
+}
+
+/* Claude's writing issues. Hemingway's green is taken by simpler words here. */
+.hl-grammar {
+  background: var(--hl-grammar);
+}
+
+.hl-fix {
+  display: block;
+  margin: 6px 0 0 -6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--accent);
+}
+
+.hl-fix:hover,
+.hl-fix:focus-visible {
+  background: var(--selection);
+  outline: none;
 }
 
 .readability {

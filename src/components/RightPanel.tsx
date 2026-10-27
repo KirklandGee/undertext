@@ -16,6 +16,10 @@ interface Props {
   hidden: readonly Kind[];
   onToggle(kinds: readonly Kind[]): void;
   onJump(kinds: readonly Kind[]): void;
+  /** Asks Claude for writing issues. */
+  onFindIssues(): void;
+  /** Uses the fix of the writing issue at the caret. */
+  onUseFix(): void;
   onTab(tab: RightTab): void;
   onOverflow(text: string): void;
   onFix(): void;
@@ -49,7 +53,7 @@ export function RightPanel(props: Props) {
 
 /** Arrow keys move, Return runs, Esc cancels a run or goes back to the page. */
 function Review(props: Props) {
-  const { busy, onFix, onCheck, onTrim, onCancel, onPage } = props;
+  const { busy, onFix, onFindIssues, onCheck, onTrim, onCancel, onPage } = props;
   const ref = useRef<HTMLDivElement>(null);
 
   // A run replaces the buttons, and its end removes the spinner. Keep the focus in the panel then,
@@ -88,6 +92,9 @@ function Review(props: Props) {
           </p>
         ) : (
           <>
+            <button className="lab-item" onClick={onFindIssues}>
+              Find writing issues
+            </button>
             <button className="lab-item" onClick={onFix}>
               Fix punctuation and typos
             </button>
@@ -118,20 +125,23 @@ const WEAKENERS: { kind: Kind; one: string; many: string }[] = [
   { kind: "passive", one: "use of passive voice", many: "uses of passive voice" },
   { kind: "qualifier", one: "qualifier", many: "qualifiers" },
   { kind: "intensifier", one: "intensifier", many: "intensifiers" },
+  { kind: "weakVerb", one: "weak verb", many: "weak verbs" },
   { kind: "filler", one: "filler", many: "fillers" },
+  { kind: "hidden", one: "hidden action", many: "hidden actions" },
+  { kind: "negative", one: "negative", many: "negatives" },
 ];
 
 /**
  * The grade, then one row per kind of highlight: its count, a click to the next one, and an eye.
  * It takes the focus when Review opens from its key, before the first count arrives.
  */
-function Readability({ checks, words, hidden, onToggle, onJump }: Props) {
+function Readability({ checks, words, hidden, onToggle, onJump, onUseFix }: Props) {
   if (!checks) return <div className="readability" tabIndex={-1} data-focus />;
   const { counts, sentences: total } = checks;
   const sentences = (n: number, what: string) =>
     `of ${total} ${total === 1 ? "sentence" : "sentences"} ${n === 1 ? "is" : "are"} ${what}`;
   const weak = WEAKENERS.map((w) => w.kind);
-  const weakCount = weak.reduce((sum, k) => sum + counts[k], 0);
+  const weakCount = checks.weakeners;
   const row = (kinds: readonly Kind[], tone: string, count: number, label: string, sub = false) => {
     const off = kinds.every((k) => hidden.includes(k));
     return (
@@ -156,6 +166,11 @@ function Readability({ checks, words, hidden, onToggle, onJump }: Props) {
         </div>
         <p className="hl-here" aria-live="polite">
           {checks.here ?? "Put the caret on a highlight to see why it's marked."}
+          {checks.fix && (
+            <button className="hl-fix" onClick={onUseFix} title="Adds the fix as an alternative. ⌥K brings back your text.">
+              Use “{checks.fix}”
+            </button>
+          )}
         </p>
       </div>
       {row(["veryHard"], "veryHard", counts.veryHard, sentences(counts.veryHard, "very hard to read"))}
@@ -168,6 +183,7 @@ function Readability({ checks, words, hidden, onToggle, onJump }: Props) {
         counts.simpler,
         counts.simpler === 1 ? "word with a simpler alternative" : "words with a simpler alternative",
       )}
+      {checks.ran && row(["grammar"], "grammar", counts.grammar, counts.grammar === 1 ? "writing issue" : "writing issues")}
     </>
   );
 }

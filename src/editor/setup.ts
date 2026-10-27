@@ -17,7 +17,7 @@ import {
   wordRangeAt,
 } from "./commands";
 import { Layers, MARKDOWN_EXTENSIONS, serializePage } from "./format";
-import { highlights, HighlightSettings, highlightReport, issueAt } from "./highlights";
+import { highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
 import { inkLayers } from "./ink";
 import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
@@ -177,12 +177,19 @@ export interface EditorInfo {
     /** The reason of the mark under the caret, if any. */
     here: string | null;
   } | null;
-  /** Live highlights, while Review is open. `here` says why the text at the caret is marked. */
+  /**
+   * The live checks, and Claude's writing issues once it has looked (`ran`). While Review is open,
+   * `here` says why the text at the caret is marked, and `fix` is a writing issue's suggestion.
+   */
   checks: {
     grade: number | null;
     sentences: number;
     counts: Record<Kind, number>;
+    /** Weakener marks, each counted once, as Hemingway does. */
+    weakeners: number;
+    ran: boolean;
     here: string | null;
+    fix: string | null;
   } | null;
 }
 
@@ -231,9 +238,19 @@ export function describe(state: EditorState): EditorInfo {
   let checks: EditorInfo["checks"] = null;
   if (report) {
     const counts = Object.fromEntries(KINDS.map((k) => [k, 0])) as Record<Kind, number>;
-    for (const i of report.issues) counts[i.kind] += 1;
-    const here = issueAt(state, state.selection.main.head)?.note ?? null;
-    checks = { grade: report.grade, sentences: report.sentences, counts, here };
+    const writing = writingIssues(state);
+    for (const i of [...report.issues, ...(writing ?? [])]) counts[i.kind] += 1;
+    const at = issueAt(state, state.selection.main.head);
+    const fix = at && "fix" in at && at.fix ? at.fix : null;
+    checks = {
+      grade: report.grade,
+      sentences: report.sentences,
+      counts,
+      weakeners: report.weakeners,
+      ran: writing !== null,
+      here: at?.note ?? null,
+      fix,
+    };
   }
 
   return { ...lastCounted.counts, alt, candidate, para, lab: labInfo, checks };

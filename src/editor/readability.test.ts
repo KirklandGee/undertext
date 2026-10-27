@@ -91,22 +91,39 @@ describe("weakeners", () => {
     ]);
   });
 
-  it("marks qualifiers, intensifiers, and fillers, each once", () => {
+  it("skips the adverbs Hemingway leaves alone", () => {
+    expect(found("It usually works. Finally, we left. It actually works. It recently changed. We left immediately.")).toEqual([]);
+  });
+
+  it("says to cut an adverb when the sentence holds without it", () => {
+    expect(checkPage("It typically works.").issues).toEqual([
+      { from: 3, to: 12, kind: "adverb", note: "Adverb. Cut it if the sentence holds without it." },
+    ]);
+  });
+
+  it("marks qualifiers, intensifiers, and fillers, and counts an adverb among them as an adverb too", () => {
     expect(found("I think this is really very good, and basically it just works.")).toEqual([
       ["qualifier", "I think"],
       ["intensifier", "really"],
+      ["adverb", "really"],
       ["intensifier", "very"],
       ["filler", "basically"],
+      ["adverb", "basically"],
       ["qualifier", "just"],
     ]);
   });
 
-  it("leaves a qualifier's literal uses alone", () => {
-    expect(found("Use plain words rather than jargon. What kind of tool is it?")).toEqual([]);
-    expect(found("It is rather slow. It is kind of slow.")).toEqual([
-      ["qualifier", "rather"],
-      ["qualifier", "kind of"],
-    ]);
+  it("counts each mark once in the weakeners' total, as Hemingway does", () => {
+    // 3 adverbs, 1 passive, 1 intensifier, 1 weak verb. "Really" and "walked slowly" are one mark
+    // each; the adverb in "was quickly closed" is its own. Hemingway says 4 weakeners.
+    const report = checkPage("He ran really fast. She walked slowly home. The door was quickly closed.");
+    expect(report.issues.filter((i) => i.kind === "adverb")).toHaveLength(3);
+    expect(report.weakeners).toBe(4);
+  });
+
+  it("leaves the hedges alone that Hemingway doesn't mark", () => {
+    expect(found("Use plain words rather than jargon. It is rather slow. It is kind of slow. It is quite slow. You know, it works.")).toEqual([]);
+    expect(found("It probably works.")).toEqual([["adverb", "probably"]]);
   });
 
   it("marks passive voice, and the words inside it too", () => {
@@ -117,6 +134,84 @@ describe("weakeners", () => {
       ["adverb", "quickly"],
     ]);
     expect(found("It is red. It was indeed hard. There was a need for speed.")).toEqual([]);
+  });
+});
+
+// The lists follow what Hemingway's web editor marked on test sentences, in October 2026.
+describe("weak verbs, hidden actions, and negatives", () => {
+  it("marks a plain verb and adverb that one stronger verb replaces, in the same tense", () => {
+    const text = "He walked slowly home. She eats quickly. They are speaking softly. She looked closely. It runs slowly.";
+    expect(found(text)).toEqual([
+      ["weakVerb", "walked slowly"],
+      ["adverb", "slowly"],
+      ["weakVerb", "eats quickly"],
+      ["adverb", "quickly"],
+      ["weakVerb", "speaking softly"],
+      ["adverb", "softly"],
+      ["adverb", "closely"],
+      ["adverb", "slowly"],
+    ]);
+    expect(checkPage(text).issues.filter((i) => i.kind === "weakVerb").map((i) => i.note)).toEqual([
+      "Weak verb. Try “strolled”.",
+      "Weak verb. Try “gobbles”.",
+      "Weak verb. Try “whispering”.",
+    ]);
+    // "Run" is also the past participle; the present tense wins.
+    expect(checkPage("They run quickly.").issues[0].note).toBe("Weak verb. Try “sprint”.");
+  });
+
+  it("leaves get and phrasal verbs alone", () => {
+    expect(found("She gets it. Sales got better. We put off the launch. Let us get started. Find out more.")).toEqual([]);
+  });
+
+  it("marks the hidden actions on Hemingway's list, in any tense", () => {
+    const text =
+      "We made a decision. They are reaching an agreement. She gave consideration to it. He is able to swim. We take into consideration the cost.";
+    expect(found(text)).toEqual([
+      ["hidden", "made a decision"],
+      ["hidden", "reaching an agreement"],
+      ["hidden", "gave consideration to"],
+      ["hidden", "is able to"],
+      ["hidden", "take into consideration"],
+    ]);
+    expect(checkPage(text).issues.map((i) => i.note)).toEqual([
+      "Hidden action. Try “decide”.",
+      "Hidden action. Try “agree”.",
+      "Hidden action. Try “consider”.",
+      "Hidden action. Try “can”.",
+      "Hidden action. Try “consider”.",
+    ]);
+  });
+
+  it("leaves a hidden action alone with other words in it", () => {
+    expect(found("We made the decision to leave. They make decisions. We made a quick decision. She gave an explanation.")).toEqual([]);
+  });
+
+  it("marks a negative that has a positive word, but not every not", () => {
+    const text = "The tool does not have a menu. It doesn't include tests. We do not need that.";
+    expect(found(text)).toEqual([
+      ["negative", "does not have"],
+      ["negative", "doesn't include"],
+    ]);
+    expect(checkPage(text).issues.map((i) => i.note)).toEqual(["Negative. Try “lacks”.", "Negative. Try “excludes”."]);
+  });
+
+  it("marks the other negatives on Hemingway's list, and only those", () => {
+    const text = "She does not notice. We did not agree. He is not honest. It does not work. It is not clear.";
+    expect(found(text)).toEqual([
+      ["negative", "does not notice"],
+      ["negative", "did not agree"],
+      ["negative", "not honest"],
+    ]);
+    expect(checkPage(text).issues.map((i) => i.note)).toEqual([
+      "Negative. Try “overlooks”.",
+      "Negative. Try “disagreed”.",
+      "Negative. Try “dishonest”.",
+    ]);
+  });
+
+  it("leaves indirect openings alone, as Hemingway does", () => {
+    expect(found("There are many people who agree. It is clear that we won.")).toEqual([]);
   });
 });
 
@@ -140,6 +235,19 @@ describe("simpler words", () => {
   it("prefers the longer phrase where two overlap", () => {
     expect(found("We stopped due to the fact that it rained.")).toEqual([["simpler", "due to the fact that"]]);
   });
+
+  it("marks an adverb with a simpler alternative once, as a simpler word", () => {
+    expect(found("We meet frequently.")).toEqual([["simpler", "frequently"]]);
+  });
+
+  it("offers one word for a negative phrase", () => {
+    const text = "Not many came. We are not often late.";
+    expect(found(text)).toEqual([
+      ["simpler", "Not many"],
+      ["simpler", "not often"],
+    ]);
+    expect(checkPage(text).issues.map((i) => i.note)).toEqual(["Simpler: few.", "Simpler: rarely."]);
+  });
 });
 
 describe("what counts as prose", () => {
@@ -159,7 +267,10 @@ describe("what counts as prose", () => {
     ].join("\n");
     const report = checkPage(text);
     const item = text.indexOf("really matters");
-    expect(report.issues).toEqual([{ from: item, to: item + 6, kind: "intensifier", note: "Intensifier. It rarely adds strength." }]);
+    expect(report.issues).toEqual([
+      { from: item, to: item + 6, kind: "intensifier", note: "Intensifier. It rarely adds strength." },
+      { from: item, to: item + 6, kind: "adverb", note: "Adverb. Cut it if the sentence holds without it." },
+    ]);
     // "Some text with here." "A list item that really matters." "Read the docs today."
     expect(report).toMatchObject({ sentences: 3, words: 14 });
   });

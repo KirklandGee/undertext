@@ -1,9 +1,10 @@
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
-import { applyFixes, longSentences, narrowChange } from "../ai/tasks";
+import { applyFixes, longSentences, narrowChange, writingIssuesFrom } from "../ai/tasks";
 import { matchScore, rank } from "../palette/match";
 import { buildCommands, GROUPS, PaletteCommand, PaletteContext } from "../palette/commands";
 import { parsePage } from "./format";
+import { setHighlights, setWritingIssues } from "./highlights";
 import { ghostLabSpans, labSpans, makeCuts, setLab } from "./lab";
 import { layersOf } from "./layers";
 import { createEditorState, describe as describeEditor, pageMarkdown } from "./setup";
@@ -31,6 +32,24 @@ describe("AI results on the page", () => {
     const next = state.update(spec).state;
     expect(next.doc.toString()).toBe("The cat sat on the mat.");
     expect(pageMarkdown(next, "")).toBe("The cat sat on {{teh|>~the}} mat.\n");
+  });
+
+  it("marks Claude's writing issues on the words that change, with the fix", () => {
+    const state = stateFor("# Rest will help yourself relax\n\nRest will help yourself relax. Plan the the plan. It works.\n");
+    const issues = writingIssuesFrom(state, [
+      { paragraph: 1, find: "help yourself relax", replace: "help you relax", reason: "In a heading." },
+      { paragraph: 2, find: "help yourself relax", replace: "help you relax", reason: "Use “you” here." },
+      { paragraph: 2, find: "the the plan", replace: "the plan", reason: "A word twice." },
+      { paragraph: 2, find: "not in the text", replace: "x", reason: "Gone." },
+      { paragraph: 2, find: "It works.", replace: "It works.", reason: "No change." },
+      { paragraph: 2, find: "It works.", replace: "", reason: "Cut it." },
+    ]);
+    // A fix that deletes the whole quote leaves no word to swap in: the quote is marked, with no fix.
+    expect(issues).toEqual([
+      { from: 48, to: 56, kind: "grammar", note: "Use “you” here.", fix: "you" },
+      { from: 73, to: 81, kind: "grammar", note: "A word twice.", fix: "plan" },
+      { from: 83, to: 92, kind: "grammar", note: "Cut it.", fix: "" },
+    ]);
   });
 
   it("finds long sentences without AI", () => {
@@ -106,6 +125,8 @@ describe("command palette", () => {
       fork: noop,
       aiAlternatives: noop,
       fixTypos: noop,
+      findIssues: noop,
+      useFix: noop,
       check: noop,
       trim: noop,
       walkLab: noop,
@@ -152,5 +173,22 @@ describe("command palette", () => {
 
     expect(GROUPS).toContain("Review");
     expect(GROUPS).not.toContain("Lab");
+  });
+
+  it("finds writing issues, and offers the fix at the caret", () => {
+    const ran: string[] = [];
+    const find = (commands: PaletteCommand[], id: string) => commands.find((c) => c.id === id);
+    const actions = { findIssues: () => ran.push("find"), useFix: () => ran.push("fix") };
+    let state = stateFor("Rest will help yourself relax.\n").update(setHighlights({ on: true })).state;
+    expect(find(buildCommands(ctx(state, {}, actions)), "lab.issues")).toMatchObject({ group: "Review", title: "Find writing issues" });
+    expect(find(buildCommands(ctx(state, {}, actions)), "lab.useFix")).toBeUndefined();
+
+    state = state.update(setWritingIssues([{ from: 15, to: 23, kind: "grammar", note: "Use “you”.", fix: "you" }])).state;
+    state = state.update({ selection: EditorSelection.cursor(17) }).state;
+    const commands = buildCommands(ctx(state, {}, actions));
+    expect(find(commands, "lab.useFix")).toMatchObject({ group: "Review", title: "Use the fix: “you”" });
+    find(commands, "lab.issues")!.run();
+    find(commands, "lab.useFix")!.run();
+    expect(ran).toEqual(["find", "fix"]);
   });
 });

@@ -8,6 +8,7 @@ import {
   CHECKS,
   CheckId,
   findFixes,
+  findWritingIssues,
   proposeTrim,
   runCheck,
   suggestAlternatives,
@@ -45,7 +46,14 @@ import {
   wordRangeAt,
 } from "./editor/commands";
 import { parsePage } from "./editor/format";
-import { HighlightSettings, jumpToIssue, setHighlights } from "./editor/highlights";
+import {
+  applyWritingFix,
+  HighlightSettings,
+  issueAt,
+  jumpToIssue,
+  setHighlights,
+  setWritingIssues,
+} from "./editor/highlights";
 import { clearLab, ghostLabSpans, jumpToLabSpan, labSpans, labState, makeCuts, setLab } from "./editor/lab";
 import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layers";
 import { Kind } from "./editor/readability";
@@ -381,6 +389,24 @@ export default function App() {
       dispatch(spec);
       flash(`${count} ${count === 1 ? "fix" : "fixes"} added as alternatives. ⌥L visits each. ⌥K restores your text.`);
     });
+
+  const findIssues = () =>
+    void runAi("Finding writing issues", async (live) => {
+      const issues = await findWritingIssues(view().state);
+      if (!live()) return;
+      dispatch(setWritingIssues(issues));
+      view().focus();
+      const n = issues.length;
+      flash(n ? `${n} writing ${n === 1 ? "issue" : "issues"} marked in pink` : "No writing issues found");
+    });
+
+  /** The writing issue at the caret becomes an alternative with its fix active. */
+  const useFix = () => {
+    const state = view().state;
+    const issue = issueAt(state, state.selection.main.head);
+    if (issue && "fix" in issue) dispatch(applyWritingFix(state, issue));
+    view().focus();
+  };
 
   const check = (id: CheckId) => {
     const c = CHECKS.find((x) => x.id === id)!;
@@ -726,6 +752,7 @@ export default function App() {
           aria-pressed={panel === "review"}
         >
           {words} {words === 1 ? "word" : "words"}
+          {info?.checks?.grade != null && ` · grade ${info.checks.grade}`}
           <span className="chars"> · {info?.chars ?? 0} chars</span>
         </button>
         <span className="filename" data-tauri-drag-region>
@@ -796,6 +823,8 @@ export default function App() {
             onTab={(next) => showPanel(next, true)}
             onOverflow={setOverflow}
             onFix={fixTypos}
+            onFindIssues={findIssues}
+            onUseFix={useFix}
             onCheck={check}
             onTrim={trim}
             onCancel={cancelAi}
@@ -920,6 +949,8 @@ export default function App() {
               fork,
               aiAlternatives,
               fixTypos,
+              findIssues,
+              useFix,
               check,
               trim,
               walkLab,

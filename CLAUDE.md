@@ -63,8 +63,8 @@ the change, whether an agent or a review tool runs it.
 - `preview.ts` hides Markdown syntax away from the cursor. `keys.ts` has Enter, Backspace, and the
   formatting, heading, and list commands. `ink.ts` draws underlines, gutter lines, and dots.
   `lab.ts` holds Review's temporary marks and cuts. `readability.ts` finds hard sentences,
-  weakeners, and simpler words in plain text, and imports nothing. `highlights.ts` draws them while
-  Review is open. `clipboard.ts` keeps layers on copy and paste.
+  weakeners, and simpler words in plain text, and imports nothing. `highlights.ts` keeps them, and
+  Claude's writing issues, and draws them while Review is open. `clipboard.ts` keeps layers on copy and paste.
   `setup.ts` puts it together and builds the `EditorInfo` the React panels read.
 - `src/App.tsx` is the app shell. The left panel follows the caret (`src/components/AltPanel.tsx`).
   The right panel is about the whole page: Review and Overflow (`src/components/RightPanel.tsx`).
