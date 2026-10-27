@@ -117,6 +117,9 @@ export function writingIssues(state: EditorState): WritingIssue[] | null {
   return state.field(highlightsField, false)?.writing ?? null;
 }
 
+/** Whether Review is open, so its marks and the popover show. */
+export const reviewOpen = (state: EditorState) => state.field(highlightsField, false)?.on ?? false;
+
 /** The marks on the page while Review is open, writing issues first, without hidden kinds. */
 export function shownIssues(state: EditorState): Issue[] {
   const h = state.field(highlightsField, false);

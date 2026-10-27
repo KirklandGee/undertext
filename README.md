@@ -151,7 +151,9 @@ update as you type.
 
 **Click a highlight** to see why it's marked and what to do. A suggestion, in the form and case of
 your words, becomes an alternative, and ⌥K brings yours back. An adverb, qualifier, intensifier, or
-filler can be ghosted, so you read the sentence without it. Passive voice, hard sentences, and
+filler can be ghosted, so you read the sentence without it, or removed. A click on ghosted text
+offers "Remove it" and "Revive it". Removing tidies the spaces, commas, and capital around the
+words, and ⌘Z brings them back. Passive voice, hard sentences, and
 hidden actions with no suggestion offer "Rewrite with Claude": Claude rewrites the sentence to fix
 it, and the rewrites that the checks no longer mark join it as alternatives. Ask again for more.
 Only that button, ⌥↩ on such a mark, or its ⌘K entry sends the paragraph to Claude. ⌥↩ does the first action at

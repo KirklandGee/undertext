@@ -249,8 +249,11 @@ Phases 4 and 5 don't need the checker, so either can come next.
 - The popover belongs to the caret: it opens on a click or a row's jump, and closes when you type,
   move off the mark, select, press Esc, or close Review. So it never points at text that changed,
   as Hemingway's can.
-- Each action keeps a way back. A suggestion becomes an alternative. A word to cut gets ghosted,
-  not deleted. Passive voice, hard sentences, and hidden actions with no suggestion get "Rewrite
+- Each action keeps a way back. A suggestion becomes an alternative. A word to cut can be ghosted
+  or removed; after "Ghost it" the popover stays on the ghost, with "Remove it" and "Revive it",
+  and a click on any ghost while Review is open offers the same. Removing tidies the spaces,
+  commas, and capital around the words, and undo brings them back. A writing issue Claude says to
+  cut offers "Remove it". Passive voice, hard sentences, and hidden actions with no suggestion get "Rewrite
   with Claude". Its prompt names the goal,
   such as the active voice, and the live checks drop any rewrite they would still mark. The first
   version reused ⌘⇧G, whose drop-in prompt kept 4 of 6 rewrites passive. The prompt names the words

@@ -193,9 +193,9 @@ describe("popover actions", () => {
       const issue = popoverAt(click(state, pos))!;
       return [issue.kind, actionsFor(state, issue).map((a) => a.kind)];
     };
-    expect(first("She left quickly.\n", 11)).toEqual(["adverb", ["ghost"]]);
-    expect(first("It is basically done.\n", 8)).toEqual(["filler", ["ghost"]]);
-    expect(first("It is perhaps done.\n", 8)).toEqual(["qualifier", ["ghost"]]);
+    expect(first("She left quickly.\n", 11)).toEqual(["adverb", ["ghost", "remove"]]);
+    expect(first("It is basically done.\n", 8)).toEqual(["filler", ["ghost", "remove"]]);
+    expect(first("It is perhaps done.\n", 8)).toEqual(["qualifier", ["ghost", "remove"]]);
     expect(first("He will be able to swim.\n", 10)).toEqual(["hidden", ["rewrite"]]);
     // 20 words, grade 12: hard. 19 long words, grade 29: very hard.
     expect(
@@ -229,12 +229,60 @@ describe("popover actions", () => {
     expect(undoRedo(state)).toEqual(["It was an initial test.\n", "It was a {{initial|>~first}} test.\n"]);
   });
 
+  it("offer to remove a word you might cut, beside ghosting it", () => {
+    let state = stateFor("She left quickly.\n");
+    const issue = popoverAt(click(state, 12))!;
+    expect(actionsFor(state, issue)).toEqual([
+      { kind: "ghost", label: "Ghost it" },
+      { kind: "remove", label: "Remove it" },
+    ]);
+    state = state.update(runAction(state, issue, actionsFor(state, issue)[1])!).state;
+    expect(pageMarkdown(state, "")).toBe("She left.\n");
+    expect(undoRedo(state)).toEqual(["She left quickly.\n", "She left.\n"]);
+  });
+
+  it("keep the popover on the ghost after ghosting, to remove or revive it", () => {
+    let state = click(stateFor("It is really done.\n"), 8);
+    state = state.update(runAction(state, popoverAt(state)!, { kind: "ghost", label: "Ghost it" })!).state;
+    const ghost = popoverAt(state)!;
+    expect(ghost).toMatchObject({ kind: "ghost", from: 6, to: 12 });
+    expect(popoverAt(state.update({}).state)).toMatchObject({ kind: "ghost", from: 6, to: 12 });
+    expect(actionsFor(state, ghost)).toEqual([
+      { kind: "remove", label: "Remove it" },
+      { kind: "revive", label: "Revive it" },
+    ]);
+    expect(popoverContent(state, ghost)).toMatchObject({ title: "Ghosted", hint: "⌥↩ removes it · esc closes" });
+    const removed = state.update(runAction(state, ghost, actionsFor(state, ghost)[0])!).state;
+    expect(pageMarkdown(removed, "")).toBe("It is done.\n");
+    const revived = state.update(runAction(state, ghost, actionsFor(state, ghost)[1])!).state;
+    expect(pageMarkdown(revived, "")).toBe("It is really done.\n");
+  });
+
+  it("open on a ghost you click while Review is open, and remove it with ⌥↩", () => {
+    // "really" at 6–12 is ghosted, so it isn't marked.
+    const state = click(stateFor("It is {-really-} done.\n"), 8);
+    expect(shown(state)).toEqual(["ghost", "really"]);
+    expect(openPopover(caret(stateFor("It is {-really-} done.\n", false), 8))).toBeNull();
+    expect(state.update(firstAction(state)!.spec!).state.doc.toString()).toBe("It is done.");
+    // ⌥↩ works with the caret in a ghost, with no popover open.
+    const unopened = caret(stateFor("It is {-really-} done.\n"), 8);
+    expect(unopened.update(firstAction(unopened)!.spec!).state.doc.toString()).toBe("It is done.");
+  });
+
+  it("offer to remove what Claude says to cut", () => {
+    // The second "It works." at 10–19.
+    const issue: WritingIssue = { from: 10, to: 19, kind: "grammar", note: "Said twice.", fix: "" };
+    const state = stateFor("It works. It works.\n").update(setWritingIssues([issue])).state;
+    expect(actionsFor(state, issue)).toEqual([{ kind: "remove", label: "Remove it" }]);
+    expect(state.update(runAction(state, issue, actionsFor(state, issue)[0])!).state.doc.toString()).toBe("It works.");
+  });
+
   it("ghost a word you might cut", () => {
     // "really" at 6–12 is an intensifier and an adverb; the popover shows the first.
     let state = stateFor("It is really done.\n");
     const issue = popoverAt(click(state, 8))!;
     expect(issue).toMatchObject({ kind: "intensifier", from: 6, to: 12 });
-    expect(actionsFor(state, issue)).toEqual([{ kind: "ghost", label: "Ghost it" }]);
+    expect(actionsFor(state, issue)[0]).toEqual({ kind: "ghost", label: "Ghost it" });
     state = state.update(runAction(state, issue, actionsFor(state, issue)[0])!).state;
     expect(state.doc.toString()).toBe("It is really done.");
     expect(pageMarkdown(state, "")).toBe("It is {-really-} done.\n");
@@ -287,9 +335,10 @@ describe("popover actions", () => {
     expect(why("**She left. The door was closed.**\n", 23)).toEqual(["passive", 0, "It cuts through bold or italic text."]);
     expect(why("She {{walked slowly|ran}} home.\n", 6)).toEqual(["weakVerb", 0, "It's an alternative already. ⌥J and ⌥K switch its versions."]);
     expect(why("She {{walked|ran}} slowly home.\n", 6)).toEqual(["weakVerb", 0, "Part of it already has alternatives."]);
+    // "Remove it" still fits there; ghosting doesn't, and the reason says why.
     expect(why("{{It is really done.|It is done.}}\n", 8)).toEqual([
       "intensifier",
-      0,
+      1,
       "It's inside an alternative, where a ghost isn't saved. Select the whole alternative and press ⌘/.",
     ]);
     expect(why("She walked slowly home.\n", 6)).toEqual(["weakVerb", 1, null]);
@@ -311,7 +360,7 @@ describe("popover actions", () => {
   it("ghost a word that is a whole alternative, which saves", () => {
     let state = stateFor("It is {{really|truly}} done.\n");
     const issue = popoverAt(click(state, 8))!;
-    expect(actionsFor(state, issue)).toEqual([{ kind: "ghost", label: "Ghost it" }]);
+    expect(actionsFor(state, issue).map((a) => a.kind)).toEqual(["ghost", "remove"]);
     state = state.update(runAction(state, issue, actionsFor(state, issue)[0])!).state;
     const saved = pageMarkdown(state, "");
     expect(saved).toBe("It is {-{{really|truly}}-} done.\n");

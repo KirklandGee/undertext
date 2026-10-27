@@ -15,6 +15,7 @@ import {
   setVersionActive,
   startsWithVowelSound,
   ghostBlocked,
+  removeSpan,
   toggleGhost,
   versionedItems,
 } from "./commands";
@@ -191,6 +192,20 @@ describe("undo", () => {
     const state = select(createEditorState(page.text, page), 10, 13);
     expect(ghostBlocked(state)).toBe("Code can't be ghosted: a save would write the ghost into the code.");
     expect(layersOf(run(state, toggleGhost)).ghosts).toEqual([]);
+  });
+
+  it("removes words and tidies the spaces, commas, and capital around them", () => {
+    const remove = (text: string, word: string) => {
+      const state = stateFor(`${text}\n`);
+      const from = at(state, word);
+      return state.update(removeSpan(state, { from, to: from + word.length })).state.doc.toString();
+    };
+    expect(remove("She left quickly.", "quickly")).toBe("She left.");
+    expect(remove("It is really done.", "really")).toBe("It is done.");
+    expect(remove("Basically, it is done.", "Basically")).toBe("It is done.");
+    expect(remove("It is, basically, done.", "basically")).toBe("It is done.");
+    expect(remove("Done. Perhaps we left.", "Perhaps")).toBe("Done. We left.");
+    expect(remove("Really", "Really")).toBe("");
   });
 
   it("undoes a ghost toggle", () => {

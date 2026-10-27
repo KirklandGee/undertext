@@ -492,6 +492,30 @@ export function deleteSpans(state: EditorState, spans: Span[]): ChangeSpec[] {
   });
 }
 
+/**
+ * Deletes a word or phrase and tidies around it: one space between words, no space before
+ * punctuation, no comma left alone, and a capital where a sentence now starts.
+ */
+export function removeSpan(state: EditorState, span: Span): TransactionSpec {
+  const line = state.doc.lineAt(span.from);
+  const text = line.text;
+  let a = span.from - line.from;
+  let b = span.to - line.from;
+  const starts = /(?:^|[.!?]["'”’)]*\s+)$/u.test(text.slice(0, a).replace(/^[ \t]*(?:>\s*|[-*+]\s+|\d+[.)]\s+)*/u, ""));
+  if (text.slice(a - 2, a) === ", " && text[b] === ",") [a, b] = [a - 2, b + 1]; // "It is, basically, done."
+  else if (starts && text.slice(b, b + 2) === ", ") b += 1; // "Basically, it is done."
+  if (text[a - 1] === " " && (text[b] === " " || b === text.length || /[.,;:!?)\]]/.test(text[b]))) a -= 1;
+  else if (text[b] === " " && (a === 0 || starts)) b += 1;
+  const changes: ChangeSpec[] = [{ from: line.from + a, to: line.from + b }];
+  // The next word starts the sentence now.
+  const next = text.slice(b).match(/^\s*(\p{Ll})/u);
+  if (starts && next) {
+    const at = line.from + b + next[0].length - 1;
+    changes.push({ from: at, to: at + 1, insert: next[1].toUpperCase() });
+  }
+  return { changes };
+}
+
 /** Deletes all ghosted text: "make the cuts". */
 export function deleteGhosts(state: EditorState): TransactionSpec | null {
   const { ghosts } = layersOf(state);

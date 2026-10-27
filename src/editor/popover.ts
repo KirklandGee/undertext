@@ -1,17 +1,36 @@
 import { EditorSelection, EditorState, Facet, Prec, StateEffect, StateField, TransactionSpec } from "@codemirror/state";
 import { EditorView, keymap, showTooltip, Tooltip } from "@codemirror/view";
-import { BLOCK_START, ghostRange, leadLength, touchesCode, unbalancedMarkup } from "./commands";
-import { applyFix, issueAt, nextIssue, shownIssues, writingIssues } from "./highlights";
+import { BLOCK_START, ghostAt, ghostRange, leadLength, removeSpan, reviveAt, touchesCode, unbalancedMarkup } from "./commands";
+import { applyFix, issueAt, nextIssue, reviewOpen, shownIssues, writingIssues } from "./highlights";
 import { layersOf } from "./layers";
 import { Issue, Kind, sentences } from "./readability";
 
 // The popover: a click on a Review highlight explains it and offers what to do. It belongs to the
 // caret: it shows while the caret stays in its mark, and closes when you type, move the caret off
-// the mark, select, press Esc, or close Review. So it never points at text that changed.
+// the mark, select, press Esc, or close Review. So it never points at text that changed. While
+// Review is open, a ghost gets one too, to remove it or bring it back.
+
+/** A ghost, as the popover sees it. */
+export interface GhostMark {
+  from: number;
+  to: number;
+  kind: "ghost";
+  note: string;
+  fix?: undefined;
+}
+
+/** What the popover can be open on: a Review mark, or a ghost. */
+export type Mark = Issue | GhostMark;
 
 /** The mark the popover is open on, and where it sits: at the caret when it opened. */
-interface Open extends Issue {
-  at: number;
+type Open = Mark & { at: number };
+
+const GHOST_NOTE = "Ghosted: dimmed, and left out of the word count.";
+
+/** The ghost at `pos`, while Review is open. */
+function ghostMarkAt(state: EditorState, pos: number): GhostMark | null {
+  const g = reviewOpen(state) ? ghostAt(state, pos) : null;
+  return g && { from: g.from, to: g.to, kind: "ghost", note: GHOST_NOTE };
 }
 
 const openEffect = StateEffect.define<Open | null>();
@@ -26,19 +45,29 @@ const popoverField = StateField.define<Open | null>({
     if (layersOf(tr.startState) !== layersOf(tr.state) || writingIssues(tr.startState) !== writingIssues(tr.state)) return null;
     const sel = tr.state.selection.main;
     if (!sel.empty || sel.head < open.from || sel.head > open.to) return null;
-    const same = (i: Issue) => i.from === open.from && i.to === open.to && i.kind === open.kind;
+    const same = (i: { from: number; to: number; kind: string }) => i.from === open.from && i.to === open.to && i.kind === open.kind;
+    if (open.kind === "ghost") return ghostMarkAt(tr.state, sel.head) && layersOf(tr.state).ghosts.some((g) => same({ ...g, kind: "ghost" })) ? open : null;
     return shownIssues(tr.state).some(same) ? open : null;
   },
   provide: (f) => showTooltip.from(f, (open) => (open ? tooltipFor(open) : null)),
 });
 
-export const popoverAt = (state: EditorState): Issue | null => state.field(popoverField, false) ?? null;
+export const popoverAt = (state: EditorState): Mark | null => state.field(popoverField, false) ?? null;
 
-/** Opens the popover on the innermost mark at the caret. Null with a selection, off a mark, or with Review closed. */
+/** The mark the caret is on: the popover's, else a ghost, as ghosted text isn't marked, else the innermost Review mark. */
+function markAtCaret(state: EditorState): Mark | null {
+  const sel = state.selection.main;
+  return popoverAt(state) ?? (sel.empty ? (ghostMarkAt(state, sel.head) ?? issueAt(state, sel.head)) : null);
+}
+
+/**
+ * Opens the popover on the ghost at the caret, or the innermost mark there. Null with a selection,
+ * off a mark, or with Review closed.
+ */
 export function openPopover(state: EditorState): TransactionSpec | null {
   const sel = state.selection.main;
-  const issue = sel.empty ? issueAt(state, sel.head) : null;
-  return issue ? { effects: openEffect.of({ ...issue, at: sel.head }) } : null;
+  const mark = sel.empty ? (ghostMarkAt(state, sel.head) ?? issueAt(state, sel.head)) : null;
+  return mark ? { effects: openEffect.of({ ...mark, at: sel.head }) } : null;
 }
 
 export const closePopover: TransactionSpec = { effects: openEffect.of(null) };
@@ -57,10 +86,15 @@ export function jumpToMark(state: EditorState, kinds: readonly Kind[], dir: 1 | 
 // What to do about a mark
 
 export interface PopoverAction {
-  /** "fix" uses the suggestion as an alternative, "ghost" dims the words, "rewrite" asks Claude. */
-  kind: "fix" | "ghost" | "rewrite";
+  /**
+   * "fix" uses the suggestion as an alternative, "ghost" dims the words, "remove" deletes them,
+   * "revive" brings a ghost back, and "rewrite" asks Claude.
+   */
+  kind: "fix" | "ghost" | "remove" | "revive" | "rewrite";
   label: string;
 }
+
+const REMOVE: PopoverAction = { kind: "remove", label: "Remove it" };
 
 const CUTS: readonly Kind[] = ["adverb", "qualifier", "intensifier", "filler"];
 const SENTENCES: readonly Kind[] = ["passive", "hard", "veryHard"];
@@ -101,14 +135,17 @@ function blocker(state: EditorState, from: number, to: number, sameAlt: boolean)
  * The text Claude would rewrite for a mark: the sentence, or the alternative that is exactly the
  * sentence, which the rewrites then join. Null where an alternative there would save a different page.
  */
-export function rewriteRange(state: EditorState, issue: Issue): { from: number; to: number } | null {
+export function rewriteRange(state: EditorState, issue: Mark): { from: number; to: number } | null {
+  if (issue.kind === "ghost") return null;
   const range = sentenceAround(state, issue);
   return blocker(state, range.from, range.to, true) ? null : range;
 }
 
-/** Why the popover offers nothing for a mark, in a line. Null when it offers something. */
-export function whyNoAction(state: EditorState, issue: Issue): string | null {
-  if (actionsFor(state, issue).length) return null;
+/** Why the popover can't offer a mark's usual action, in a line: its fix, a ghost, or a rewrite. Null when it can. */
+export function whyNoAction(state: EditorState, issue: Mark): string | null {
+  if (issue.kind === "ghost" || issue.kind === "grammar" && !issue.fix) return null;
+  const main = actionsFor(state, issue).filter((a) => a.kind !== "remove");
+  if (main.length) return null;
   const fallback = "Changing it here would change what's saved.";
   if (issue.fix) {
     const same = layersOf(state).alts.some((a) => a.from === issue.from && a.to === issue.to);
@@ -127,20 +164,35 @@ export function whyNoAction(state: EditorState, issue: Issue): string | null {
 }
 
 /** What the popover offers for a mark, best first. Empty when nothing fits there. */
-export function actionsFor(state: EditorState, issue: Issue): PopoverAction[] {
+export function actionsFor(state: EditorState, issue: Mark): PopoverAction[] {
+  if (issue.kind === "ghost") return [REMOVE, { kind: "revive", label: "Revive it" }];
   if (issue.fix) return applyFix(state, issue) ? [{ kind: "fix", label: issue.fix }] : [];
-  if (CUTS.includes(issue.kind)) return ghostRange(state, issue.from, issue.to) ? [{ kind: "ghost", label: "Ghost it" }] : [];
+  // Claude's issue with no fix says to cut the words.
+  if (issue.kind === "grammar") return [REMOVE];
+  if (CUTS.includes(issue.kind)) {
+    return ghostRange(state, issue.from, issue.to) ? [{ kind: "ghost", label: "Ghost it" }, REMOVE] : [REMOVE];
+  }
   if (SENTENCES.includes(issue.kind) || issue.kind === "hidden") {
     return rewriteRange(state, issue) ? [{ kind: "rewrite", label: "Rewrite with Claude" }] : [];
   }
   return [];
 }
 
-/** The change an action makes. Null for a rewrite, which the app runs with Claude. */
-export function runAction(state: EditorState, issue: Issue, action: PopoverAction): TransactionSpec | null {
-  if (action.kind === "fix") return applyFix(state, issue);
-  if (action.kind === "ghost") return ghostRange(state, issue.from, issue.to);
-  return null;
+/**
+ * The change an action makes. Null for a rewrite, which the app runs with Claude. Ghosting keeps
+ * the popover open on the new ghost, so "Remove it" is still a click away.
+ */
+export function runAction(state: EditorState, issue: Mark, action: PopoverAction): TransactionSpec | null {
+  if (action.kind === "fix") return issue.kind === "ghost" ? null : applyFix(state, issue);
+  if (action.kind === "remove") return removeSpan(state, issue);
+  if (action.kind === "revive") return reviveAt(state, issue.from);
+  if (action.kind !== "ghost") return null;
+  const spec = ghostRange(state, issue.from, issue.to);
+  // The new ghost may join one next to it.
+  const ghost = spec && layersOf(state.update(spec).state).ghosts.find((g) => g.from <= issue.from && issue.to <= g.to);
+  if (!spec || !ghost) return spec;
+  const open: Open = { from: ghost.from, to: ghost.to, kind: "ghost", note: GHOST_NOTE, at: state.selection.main.head };
+  return { effects: [spec.effects as StateEffect<unknown>, openEffect.of(open)] };
 }
 
 /** What Claude rewrites, and why: the range, the kind of mark, and the words it flagged. */
@@ -158,18 +210,16 @@ function rewriteTarget(state: EditorState, issue: Issue): RewriteTarget | null {
 
 /** Review's "Use" button: the fix of the popover's mark, or of the mark at the caret. */
 export function useFixAt(state: EditorState): TransactionSpec | null {
-  const sel = state.selection.main;
-  const issue = popoverAt(state) ?? (sel.empty ? issueAt(state, sel.head) : null);
-  return issue && applyFix(state, issue);
+  const issue = markAtCaret(state);
+  return issue && issue.kind !== "ghost" ? applyFix(state, issue) : null;
 }
 
 /** ⌥↩: the first action for the mark at the caret, as a change, or as the text for Claude to rewrite. */
 export function firstAction(state: EditorState): { spec?: TransactionSpec; rewrite?: RewriteTarget } | null {
-  const sel = state.selection.main;
-  const issue = popoverAt(state) ?? (sel.empty ? issueAt(state, sel.head) : null);
+  const issue = markAtCaret(state);
   const action = issue && actionsFor(state, issue)[0];
   if (!issue || !action) return null;
-  if (action.kind === "rewrite") return { rewrite: rewriteTarget(state, issue)! };
+  if (action.kind === "rewrite" && issue.kind !== "ghost") return { rewrite: rewriteTarget(state, issue)! };
   const spec = runAction(state, issue, action);
   return spec ? { spec } : null;
 }
@@ -177,7 +227,8 @@ export function firstAction(state: EditorState): { spec?: TransactionSpec; rewri
 // ---------------------------------------------------------------------------
 // The popover on the page
 
-const TITLES: Record<Kind, string> = {
+const TITLES: Record<Mark["kind"], string> = {
+  ghost: "Ghosted",
   veryHard: "Very hard to read",
   hard: "Hard to read",
   adverb: "Adverb",
@@ -192,7 +243,8 @@ const TITLES: Record<Kind, string> = {
   grammar: "Writing issue",
 };
 
-const ADVICE: Record<Kind, string> = {
+const ADVICE: Record<Mark["kind"], string> = {
+  ghost: "Dimmed, so you can read the sentence without it. It's left out of the word count.",
   veryHard: "Split it, or use shorter words.",
   hard: "Split it, or use shorter words.",
   adverb: "An -ly word often props up a weak verb. Cut it if the sentence holds without it.",
@@ -208,11 +260,19 @@ const ADVICE: Record<Kind, string> = {
 };
 
 /** What ⌥↩ does, for the hint under the buttons. */
-const KEY_HINTS: Record<PopoverAction["kind"], string> = { fix: "uses it", ghost: "ghosts it", rewrite: "asks Claude" };
+const KEY_HINTS: Record<PopoverAction["kind"], string> = {
+  fix: "uses it",
+  ghost: "ghosts it",
+  remove: "removes it",
+  revive: "revives it",
+  rewrite: "asks Claude",
+};
 
 const HINTS: Record<PopoverAction["kind"], string> = {
   fix: "Becomes an alternative. ⌥K brings your words back.",
   ghost: "Dims it, so you can read the sentence without it. ⌘/ brings it back.",
+  remove: "Deletes it, and tidies the spaces around it. ⌘Z brings it back.",
+  revive: "Brings it back to full strength, and into the word count.",
   rewrite: "Asks Claude for rewrites of the sentence. ↑↓ picks one.",
 };
 
@@ -221,7 +281,7 @@ type Rewrite = (target: RewriteTarget) => void;
 const rewriteFacet = Facet.define<Rewrite, Rewrite>({ combine: (all) => all[0] ?? (() => {}) });
 
 /** What the popover says about a mark: its title, explanation, reason for no action, actions, and key hint. */
-export function popoverContent(state: EditorState, issue: Issue) {
+export function popoverContent(state: EditorState, issue: Mark) {
   // A hard sentence's word count is the one Review counts: prose only, as its note says.
   const words = issue.note.match(/(\d+) words/)?.[1];
   const text = issue.kind === "grammar" ? issue.note : words ? `${words} words. ${ADVICE[issue.kind]}` : ADVICE[issue.kind];
@@ -239,7 +299,7 @@ function tooltipFor(open: Open): Tooltip {
   return {
     pos: open.at,
     create(view) {
-      const issue: Issue = open;
+      const issue: Mark = open;
       const { title: heading, text: advice, why, actions, hint: keys } = popoverContent(view.state, issue);
       const dom = document.createElement("div");
       dom.className = "hl-pop";
@@ -275,9 +335,9 @@ function tooltipFor(open: Open): Tooltip {
   };
 }
 
-function run(view: EditorView, issue: Issue, action: PopoverAction) {
+function run(view: EditorView, issue: Mark, action: PopoverAction) {
   if (action.kind === "rewrite") {
-    const target = rewriteTarget(view.state, issue);
+    const target = issue.kind === "ghost" ? null : rewriteTarget(view.state, issue);
     view.dispatch(closePopover);
     if (target) view.state.facet(rewriteFacet)(target);
   } else {

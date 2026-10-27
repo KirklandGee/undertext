@@ -892,6 +892,10 @@ button:focus-visible {
   background: var(--hl-grammar);
 }
 
+.hl-pop-ghost::before {
+  background: var(--faint);
+}
+
 .hl-pop-text {
   margin: 6px 0 0;
   color: var(--fg-dim);
