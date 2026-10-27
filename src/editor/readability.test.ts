@@ -647,3 +647,16 @@ describe("dashes", () => {
     expect(checkPage("It was late — very late. We left — fast.").weakeners).toBe(1);
   });
 });
+
+describe("speed", () => {
+  // Each dash is read from the few characters around it. Reading the rest of the page for each one
+  // took 2.4 s per edit on this page; the bound is loose, for slow machines.
+  it("checks a long page full of dashes in well under a second per edit", () => {
+    const para = "It was late — very late, and we left — fast. The plan — bold as ever — failed. ";
+    const page = Array.from({ length: 160 }, (_, i) => `${i} ${para.repeat(4)}`).join("\n\n");
+    checkPage(page);
+    const start = performance.now();
+    checkPage(page.replace("0 It", "0 Its"));
+    expect(performance.now() - start).toBeLessThan(300);
+  });
+});

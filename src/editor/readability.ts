@@ -75,6 +75,18 @@ const RANGE_ENDS = /^(?:present|now|today|noon|midnight|date)$/i;
 /** A word without the brackets, quotes, and punctuation around it. */
 const bare = (word: string) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
 
+/** The word that ends at `at`, or starts there: the characters up to a space, at most 40 of them. */
+function wordBefore(text: string, at: number): string {
+  let a = at;
+  while (a > 0 && at - a < 40 && !/\s/.test(text[a - 1])) a--;
+  return text.slice(a, at);
+}
+function wordAfter(text: string, at: number): string {
+  let b = at;
+  while (b < text.length && b - at < 40 && !/\s/.test(text[b])) b++;
+  return text.slice(at, b);
+}
+
 /** Whether two words around a hyphen or dash make a range: numbers, hours, money, days, or months. */
 export function isRange(left: string, right: string): boolean {
   const [l, r] = [bare(left), bare(right)];
@@ -91,9 +103,12 @@ export function dashesIn(text: string): number[] {
   for (const m of text.matchAll(/[—―]|(?<=[ \t])–(?=[ \t])/g)) {
     const i = m.index;
     if (/[—―]/.test(text[i - 1] ?? "") || /[—―]/.test(text[i + 1] ?? "")) continue;
-    const line = text.slice(text.lastIndexOf("\n", i - 1) + 1, i);
-    if (/^[ \t>]*$/.test(line) || /[.!?]["”’)]*[ \t]+$/.test(line)) continue;
-    if (text[i] === "–" && isRange(/\S*$/.exec(text.slice(0, i - 1))![0], /^\S*/.exec(text.slice(i + 2))![0])) continue;
+    // Only spaces and quote markers before it on its line, or a sentence's end and a space.
+    let j = i;
+    while (j > 0 && /[ \t>]/.test(text[j - 1])) j--;
+    if (j === 0 || text[j - 1] === "\n") continue;
+    if (j < i && /[ \t]/.test(text[i - 1]) && /[.!?]["”’)]*$/.test(text.slice(Math.max(0, j - 4), j))) continue;
+    if (text[i] === "–" && isRange(wordBefore(text, i - 1), wordAfter(text, i + 2))) continue;
     out.push(i);
   }
   return out;
@@ -103,9 +118,11 @@ export function dashesIn(text: string): number[] {
 export function hyphenDashes(text: string): number {
   let n = 0;
   for (const m of text.matchAll(/(?<![-<])--(?![->])|(?<=\S) - (?=\S)/g)) {
-    const left = /\S*$/.exec(text.slice(0, m.index).trimEnd())![0];
-    const right = /^\S*/.exec(text.slice(m.index + m[0].length).trimStart())![0];
-    if (!isRange(left, right)) n++;
+    let a = m.index;
+    while (a > 0 && text[a - 1] === " ") a--;
+    let b = m.index + m[0].length;
+    while (b < text.length && text[b] === " ") b++;
+    if (!isRange(wordBefore(text, a), wordAfter(text, b))) n++;
   }
   return n;
 }
@@ -130,14 +147,15 @@ function styleAt(text: string, i: number): DashStyle | null {
  * Whether the dash at `i` belongs to speech that breaks off or stammers: "But—”", "“—and", "I—I",
  * "no—no", or a dash that ends the text. A straight quote opens after a space and closes before one.
  */
-function speechAt(text: string, i: number): boolean {
+function speechAt(text: string, i: number, end: number): boolean {
   const [before, after] = [text[i - 1] ?? "", text[i + 1] ?? ""];
-  if (/[“‘(]/.test(before) || /[”’)]/.test(after) || !text.slice(i + 1).trim()) return true;
+  if (/[“‘(]/.test(before) || /[”’)]/.test(after) || i + 1 >= end) return true;
   if (/["']/.test(before) && !/\S/.test(text[i - 2] ?? "")) return true;
   if (/["']/.test(after) && /^(?:[\s.,;:!?]|$)/.test(text.slice(i + 2, i + 3))) return true;
-  const left = /\p{L}+$/u.exec(text.slice(0, i))?.[0].toLowerCase();
-  const right = /^\p{L}+/u.exec(text.slice(i + 1))?.[0].toLowerCase();
-  return Boolean(left && right && left.length <= 3 && right.startsWith(left));
+  // A stammer repeats a short word: "I—I", "no—no".
+  const left = /\p{L}{1,3}$/u.exec(text.slice(Math.max(0, i - 4), i))?.[0].toLowerCase();
+  const right = text.slice(i + 1, i + 5).toLowerCase();
+  return Boolean(left && !/\p{L}/u.test(text[i - 1 - left.length] ?? "") && right.startsWith(left));
 }
 
 /**
@@ -147,8 +165,9 @@ function speechAt(text: string, i: number): boolean {
  */
 export function dashStyle(page: string): DashStyle {
   const count = { closed: 0, spaced: 0, spacedEn: 0 };
+  const end = page.trimEnd().length;
   for (const i of dashesIn(page)) {
-    const style = speechAt(page, i) ? null : styleAt(page, i);
+    const style = speechAt(page, i, end) ? null : styleAt(page, i);
     if (style) count[style]++;
   }
   if (count.spaced > count.closed && count.spaced >= count.spacedEn) return "spaced";
@@ -674,9 +693,10 @@ const STYLE_NOTES: Record<DashStyle, string> = {
 function dashIssues(text: string, style: DashStyle): Issue[] {
   const issues: Issue[] = [];
   const all = dashesIn(text);
+  const end = text.trimEnd().length;
   let uses = 0;
   for (const s of sentences(text)) {
-    const at = all.filter((i) => s.from <= i && i < s.to && !speechAt(text, i));
+    const at = all.filter((i) => s.from <= i && i < s.to && !speechAt(text, i, end));
     for (let k = 0; k < at.length; k += 2) {
       if (++uses === 1) continue;
       const pair = k + 1 < at.length;
@@ -689,7 +709,7 @@ function dashIssues(text: string, style: DashStyle): Issue[] {
   const groups: { from: number; to: number; dashes: [number, number][] }[] = [];
   for (const i of all) {
     const mine = styleAt(text, i);
-    if (!mine || mine === style || speechAt(text, i) || issues.some((d) => d.from <= i && i < d.to)) continue;
+    if (!mine || mine === style || speechAt(text, i, end) || issues.some((d) => d.from <= i && i < d.to)) continue;
     const [a, b] = mine === "closed" ? [i, i + 1] : [i - 1, i + 2];
     let from = a;
     while (from > 0 && !/\s/.test(text[from - 1])) from--;
