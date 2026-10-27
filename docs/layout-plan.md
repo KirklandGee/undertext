@@ -52,7 +52,7 @@ The gap is Hemingway's free half: **checks that run locally, as you type**, with
 is the grade, hard sentences, adverbs, passive voice, qualifiers, and simpler words. The rest is
 mostly here already, in a form that keeps the original.
 
-## Today's layout
+## The layout before phase 1
 
 - Top bar: word and character count, file name. A click on the count toggles the layers, which
   nothing hints at.
@@ -93,8 +93,8 @@ Today's Alternatives panel, grown. Same shortcut, ⌘⇧A.
 
 One panel, two tabs. ⌘⇧E and ⌘⇧O work the same way. From the page or the other tab, each shows
 its tab and focuses it. Pressed inside its own tab, it closes the panel. Esc goes back to the page
-and leaves the panel open. A click on a tab's button shows the tab, or closes the panel when that
-tab already shows.
+and leaves the panel open. A click on a tab in the panel shows that tab. The bottom bar's button,
+or the word count for Review, shows the tab, or closes the panel when that tab already shows.
 
 **Review**, top to bottom:
 
@@ -144,13 +144,16 @@ narrow window with both open, they overlap. That is fine at that width.
 All local, no network. `src/editor/readability.ts` holds the rules and imports nothing, so its
 tests run on plain strings. `src/editor/highlights.ts` draws them on the page.
 
-- **Prose**: paragraphs, list items, and quotes. Headings, code, tables, HTML, link addresses, and
-  ghosted text are skipped. A sentence never runs from one list item into the next.
-- **Sentences**: split after `.`, `!`, and `?`. Not after "Mr.", an initial, "e.g.", a decimal
-  point, or a word before a lowercase one. "No." and "fig." are abbreviations only before a number.
+- **Prose**: paragraphs, list items, and quotes. Headings (also underlined ones), code (also
+  indented), tables, HTML, link addresses, bare web addresses, and ghosted text are skipped. A
+  sentence never runs from one list item into the next.
+- **Sentences**: split after `.`, `!`, and `?`. Not after "Mr.", an initial, "e.g.", or a decimal
+  point, and not when the next word starts in lowercase. "No." and "fig." are abbreviations only
+  before a number.
 - **Grade**: the Automated Readability Index, rounded, never below zero.
 - **Hard and very hard**: a sentence of 14 or more words, by its own grade: hard from 10, very hard
   from 14.
+
 The weakener lists follow what Hemingway's web editor marked on about 650 test sentences, one at
 a time. They are short on purpose: a mark that is often wrong teaches you to ignore the marks.
 
@@ -166,20 +169,27 @@ a time. They are short on purpose: a mark that is often wrong teaches you to ign
 - **Negatives**: a negative that one positive word says (does not have → lacks, did not succeed →
   failed). A plain "do not want" isn't marked. Hemingway's category is "negative or indirect
   phrases", but it marked none of the indirect openings we tried.
-- **Simpler words**: a phrase list (utilize → use, in order to → to, not many → few), with -s,
-  -ed, and -ing forms.
+- **Simpler words**: a phrase list (utilize → use, in order to → to, not many → few), in any form
+  (modify → modified, transmit → transmitted).
 
-The longer match wins where two overlap, so "due to the fact that" is one simpler phrase, not a
-filler inside it. Adverbs and passive voice may sit inside other marks, so "really" counts as an
-intensifier and an adverb, as in Hemingway. Only one tint shows, and the weakeners' total counts
-it once. An adverb inside passive voice is its own mark, as Hemingway counts it. Each paragraph's result is kept, so an edit
-checks only the paragraph it changed: on a 20,000-word page the first check takes 23 ms, and each
-edit after it 0.4 ms. The checks run with Review closed too, for the grade in the top bar.
+The longer match wins where two marks overlap. Adverbs and passive voice may sit inside other
+marks, so "really" counts as an intensifier and an adverb, as in Hemingway. Only one tint shows,
+and the weakeners' total counts it once. An adverb inside passive voice is its own mark, as
+Hemingway counts it.
+
+Each block's result is kept until the block changes, so an edit checks only the paragraph it
+changed. On a 20,000-word page in paragraphs, the first check takes 25 to 50 ms, and each edit
+after it under 1 ms. A long paragraph is slow: 20,000 words in one paragraph cost 117 ms per
+keystroke in WebKit's engine. The checks run with Review closed too, for the grade in the top bar.
 
 **Writing issues** come from Claude, on request: "Find writing issues" in Review or ⌘K. Each has a
 reason and a fix. Claude quotes a snippet and its corrected form; the mark covers the words that
-change. "Use" makes the fix an alternative, with the original kept. A mark moves with edits, and
-goes away when its own text changes.
+change. The quotes are found on the page as it is when the answer comes, so typing meanwhile is
+safe. Code is skipped. Review opens to show the marks. "Use" makes the fix an alternative, with the
+original kept. A fix that adds or drops a space takes in the whole word, because a saved
+alternative can't start or end with a space. A fix isn't offered where its alternative would save
+a different page: in code, cutting into a ghost, or starting a line with Markdown markup. The
+same rules hold for typo fixes. A mark moves with edits, and goes away when its own text changes.
 
 The rules are for English.
 
@@ -191,7 +201,8 @@ Each phase ends with the tests passing and the change tried in the app.
    move into Review. Here keeps today's Alternatives contents. Bars and shortcuts as above. No new
    features.
 2. **Checker spike, go or no-go** (skipped, 2026-10-26). The real module was built test-first
-   instead, and its speed measured on a long page. See "Live checks".
+   instead, and its speed measured on a long page. See "Live checks". Not checked: how the tints
+   look under alternatives and ghosts in the app.
 3. **Live checks** (mostly done, 2026-10-26). The module, its tests, the highlights, the Review
    rows with counts, eyes, and jumps, "Why it's marked" in Review, all of Hemingway's weakeners,
    the grade in the top bar, and writing issues from Claude. Still to do: the reason in Here, and
@@ -205,9 +216,9 @@ Phases 4 and 5 don't need the checker, so either can come next.
 ## Risks
 
 - **Visual noise.** Tints, underlines, dots, ghost fades, and Lab marks on one line. The rule
-  "highlights only while Review is open" is the main defense. The spike checks it.
-- **Speed.** Splitting sentences on each keystroke in a long document. Decorations must stay
-  limited to the viewport.
+  "highlights only while Review is open" is the main defense. Not yet checked in the app.
+- **Speed.** Each keystroke checks its whole paragraph again, so a very long paragraph is slow.
+  Decorations must stay limited to the viewport.
 - **Sentence splitting in Markdown.** Abbreviations, quotes, links, inline code, and list items
   break naive rules. Tests need many real cases.
 - **Grade worship.** Hemingway's grade rewards short words and short sentences. Undertext should
@@ -221,14 +232,15 @@ Phases 4 and 5 don't need the checker, so either can come next.
 - ⌘⇧E works like ⌘⇧O: it shows and focuses its tab, and closes the panel from inside it. Esc goes
   back to the page and leaves the panel open.
 - Review and Overflow are two tabs of one panel. Only one shows at a time.
-- Lab results stay in the bar under the page for now. Revisit in phase 3.
+- Lab results stay in the bar under the page for now. See open decision 8.
 - A run from Review keeps the panel open and puts the focus on the page, where the results are.
 - Live local checks come first: Hemingway's highlights are what Undertext lacks.
 - Highlights show only while Review is open. There is no separate Write and Edit switch.
 - The grade is the Automated Readability Index, as in open-source Hemingway clones. The target is
   fixed: hard from grade 10.
-- The first slice has hard and very hard sentences, five weakeners (adverbs, passive voice,
-  qualifiers, intensifiers, fillers), and simpler words. Grammar waits: rules can't do it well.
+- The first slice had hard and very hard sentences, five weakeners (adverbs, passive voice,
+  qualifiers, intensifiers, fillers), and simpler words. Grammar waited for Claude: rules can't do
+  it well.
 - Simpler words are green, not Hemingway's purple. Purple is the accent, and it belongs to
   alternatives.
 - Ghosted text isn't checked, as it isn't counted.
@@ -258,3 +270,4 @@ Phases 4 and 5 don't need the checker, so either can come next.
    and typos" does, one fix at a time. Keep both, or drop the typo fix.
 7. **Adverbs hidden at first.** Hemingway counts adverbs but hides their marks until you show
    them. Undertext shows them. Do the same as Hemingway, or not.
+8. **Lab results.** They show in the bar under the page. Move them into Review, or keep the bar.

@@ -71,6 +71,16 @@ describe("hard sentences", () => {
     expect(notes).toEqual(["Hard to read. 20 words.", "Very hard to read. 19 words."]);
   });
 
+  it("draws the lines at grade 10 and grade 14", () => {
+    // 14 words: 13 of 5 letters and a last one. 4.71 × letters/14 + 0.5 × 14 − 21.43:
+    // 71 letters 9.46, grade 9. 72 letters 9.79, grade 10. 83 letters 13.49, grade 13. 84 letters 13.83, grade 14.
+    const kinds = (last: string) => checkPage(`${"words ".repeat(13)}${last}.`).issues.map((i) => i.kind);
+    expect(kinds("abcdef")).toEqual([]);
+    expect(kinds("abcdefg")).toEqual(["hard"]);
+    expect(kinds("abcdefghijklmnopqr")).toEqual(["hard"]);
+    expect(kinds("abcdefghijklmnopqrs")).toEqual(["veryHard"]);
+  });
+
   it("leaves a sentence under 14 words alone, however long its words", () => {
     // 13 words.
     const short =
@@ -210,6 +220,12 @@ describe("weak verbs, hidden actions, and negatives", () => {
     ]);
   });
 
+  it("reads a curly apostrophe as a straight one", () => {
+    const text = "It doesn’t include tests.";
+    expect(found(text)).toEqual([["negative", "doesn’t include"]]);
+    expect(checkPage(text).issues[0].note).toBe("Negative. Try “excludes”.");
+  });
+
   it("leaves indirect openings alone, as Hemingway does", () => {
     expect(found("There are many people who agree. It is clear that we won.")).toEqual([]);
   });
@@ -229,6 +245,15 @@ describe("simpler words", () => {
       "Simpler: to.",
       "Simpler: help.",
       "Simpler: use.",
+    ]);
+  });
+
+  it("marks the forms of a word that ends in y or doubles its last letter", () => {
+    expect(found("It modifies and modified what we transmitted while transmitting.")).toEqual([
+      ["simpler", "modifies"],
+      ["simpler", "modified"],
+      ["simpler", "transmitted"],
+      ["simpler", "transmitting"],
     ]);
   });
 
@@ -273,6 +298,48 @@ describe("what counts as prose", () => {
     ]);
     // "Some text with here." "A list item that really matters." "Read the docs today."
     expect(report).toMatchObject({ sentences: 3, words: 14 });
+  });
+
+  it("skips tables, HTML, bare addresses, indented code, and underlined headings", () => {
+    const text = [
+      "| really quickly |",
+      "<div>really quickly</div>",
+      "",
+      "See https://example.com/really/quickly now.",
+      "",
+      "    really quickly indented code",
+      "",
+      "A title that really reads quickly",
+      "===",
+      "",
+      "Another title, really",
+      "---",
+      "",
+      "- An item",
+      "",
+      "    really part of the item.",
+      "",
+    ].join("\n");
+    expect(found(text)).toEqual([
+      ["intensifier", "really"],
+      ["adverb", "really"],
+    ]);
+    expect(checkPage(text).issues[0].from).toBe(text.indexOf("really part"));
+  });
+
+  it("keeps prose that only looks like code or an underlined heading", () => {
+    const really = [
+      ["intensifier", "really"],
+      ["adverb", "really"],
+    ];
+    expect(found("- really quickly\n---")).toEqual([...really, ["adverb", "quickly"]]);
+    expect(found("First line of it\n    really continues.")).toEqual(really);
+    expect(found("- An item\n\n    Its first part.\n\n    really its second part.")).toEqual(really);
+    expect(found("I wrote this really quickly.\n> A quote, really.\n---")).toEqual([...really, ["adverb", "quickly"], ...really]);
+  });
+
+  it("reads indented text as code once a heading ends the list", () => {
+    expect(found("- Install it.\n\n## Usage\n\n    really quickly run it")).toEqual([]);
   });
 
   it("never runs a sentence from one list item into the next", () => {

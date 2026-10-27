@@ -1,7 +1,7 @@
 import { EditorState, TransactionSpec } from "@codemirror/state";
 import { blockAt, countWords, findAlt, syncedVariants } from "../editor/commands";
 import { Alt, newId } from "../editor/format";
-import { WritingIssue } from "../editor/highlights";
+import { fitFix, touchesCode, WritingIssue } from "../editor/highlights";
 import { LabSpan } from "../editor/lab";
 import { layersOf, mapLayers, setLayers } from "../editor/layers";
 import { callClaude } from "./client";
@@ -155,11 +155,13 @@ export function applyFixes(state: EditorState, fixes: Fix[]): { spec: Transactio
     if (!found || fix.find === fix.replace) continue;
     const change = narrowChange(fix.find, fix.replace);
     if (!change) continue;
-    const from = found.from + change.start;
-    const to = from + change.original.length;
-    if (layersOf(state).alts.some((alt) => alt.from < to && alt.to > from)) continue;
+    const start = found.from + change.start;
+    const fit = fitFix(state, start, start + change.original.length, change.fixed);
+    if (!fit) continue;
+    const { from, to } = fit;
+    if (edits.some((e) => e.from < to && e.to > from)) continue;
     used.push(found);
-    edits.push({ from, to, original: change.original, fixed: change.fixed });
+    edits.push({ from, to, original: state.doc.sliceString(from, to), fixed: fit.fix });
   }
 
   const changes = state.changes(edits.map((e) => ({ from: e.from, to: e.to, insert: e.fixed })));
@@ -330,14 +332,18 @@ export function wordsIn(state: EditorState, spans: LabSpan[]): number {
 // ---------------------------------------------------------------------------
 // 5. Writing issues: grammar and style, marked pink in Review, each with a fix
 
-interface WritingAnswer {
+export interface WritingAnswer {
   paragraph: number;
   find: string;
   replace: string;
   reason: string;
 }
 
-export async function findWritingIssues(state: EditorState): Promise<WritingIssue[]> {
+/**
+ * Claude's answer quotes the page. The page may change while Claude works, so place the answer
+ * with writingIssuesFrom on the page as it is when the answer comes.
+ */
+export async function findWritingIssues(state: EditorState): Promise<WritingAnswer[]> {
   const paras = docParagraphs(state);
   if (!paras.length) return [];
   const answer = await callClaude<{ issues: WritingAnswer[] }>(
@@ -355,12 +361,13 @@ export async function findWritingIssues(state: EditorState): Promise<WritingIssu
     },
     () => ({ issues: mockWritingIssues(paras) }),
   );
-  return writingIssuesFrom(state, answer.issues);
+  return answer.issues;
 }
 
 /**
  * Finds each quote on the page and marks the words that change, with the fix for them. A change
- * with no word to swap, such as a deletion, marks the whole quote. Headings and ghosts are skipped.
+ * with no word to swap, such as a deletion, marks the whole quote. Headings, ghosts, and code are
+ * skipped.
  */
 export function writingIssuesFrom(state: EditorState, answers: WritingAnswer[]): WritingIssue[] {
   const paras = docParagraphs(state);
@@ -369,7 +376,7 @@ export function writingIssuesFrom(state: EditorState, answers: WritingAnswer[]):
   for (const a of answers) {
     if (a.find === a.replace) continue;
     const found = locate(paras, a.paragraph, a.find, used);
-    if (!found || isHeading(state, found.from) || ghostedEntirely(state, found)) continue;
+    if (!found || isHeading(state, found.from) || ghostedEntirely(state, found) || touchesCode(state, found.from, found.to)) continue;
     used.push(found);
     const change = narrowChange(a.find, a.replace);
     const from = found.from + (change?.start ?? 0);

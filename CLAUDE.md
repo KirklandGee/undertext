@@ -5,7 +5,8 @@ versions, Overflow, and Review, with AI checks and trims. React and CodeMirror 6
 built for macOS.
 
 What comes next, and the decisions behind the editor: the "Next" section of
-`docs/codemirror-plan.md`.
+`docs/codemirror-plan.md`. The side panels and Review's checks have their own plan, with its
+decisions: `docs/layout-plan.md`.
 
 ## Commands
 

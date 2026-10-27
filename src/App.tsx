@@ -15,6 +15,7 @@ import {
   TRIMS,
   TrimId,
   wordsIn,
+  writingIssuesFrom,
 } from "./ai/tasks";
 import { CommandPalette } from "./components/CommandPalette";
 import { KeyDialog } from "./components/KeyDialog";
@@ -175,6 +176,8 @@ export default function App() {
    * counts as saved. Without `disk`, a file with a path holds `md` on disk.
    */
   const loadMarkdown = (md: string, next: FileRef, savedMd?: string, disk?: string | null) => {
+    // A run's answer belongs to the page it started on.
+    stopAi();
     diskRef.current = disk === undefined ? (next.path ? md : null) : disk;
     const { text, alts, ghosts, versions, overflow: extra } = parsePage(md);
     const v = view();
@@ -352,10 +355,15 @@ export default function App() {
     }
   };
 
-  const cancelAi = () => {
+  /** Stops the AI run, if any, and drops its result. */
+  const stopAi = () => {
     void aiCancel().catch(() => {});
     aiRunRef.current++;
     setAiBusy(null);
+  };
+
+  const cancelAi = () => {
+    stopAi();
     flash("Cancelled");
   };
 
@@ -392,9 +400,12 @@ export default function App() {
 
   const findIssues = () =>
     void runAi("Finding writing issues", async (live) => {
-      const issues = await findWritingIssues(view().state);
+      const answers = await findWritingIssues(view().state);
       if (!live()) return;
+      const issues = writingIssuesFrom(view().state, answers);
       dispatch(setWritingIssues(issues));
+      // The marks show only while Review is open.
+      if (issues.length) showPanel("review");
       view().focus();
       const n = issues.length;
       flash(n ? `${n} writing ${n === 1 ? "issue" : "issues"} marked in pink` : "No writing issues found");

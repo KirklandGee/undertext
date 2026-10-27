@@ -150,7 +150,13 @@ function Readability({ checks, words, hidden, onToggle, onJump, onUseFix }: Prop
           <span className={`hl-count hl-${tone}`}>{count}</span>
           {label}
         </button>
-        <button className="hl-eye" onClick={() => onToggle(kinds)} aria-pressed={!off} title={off ? "Show them" : "Hide them"}>
+        <button
+          className="hl-eye"
+          onClick={() => onToggle(kinds)}
+          aria-label="Show on the page"
+          aria-pressed={!off}
+          title={off ? "Show them" : "Hide them"}
+        >
           <Icon name={off ? "eyeOff" : "eye"} />
         </button>
       </div>

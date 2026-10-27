@@ -28,7 +28,7 @@ description: Builds a new feature that fits the editor's existing shape, with a 
 | A new kind of layer | `src/editor/layers.ts`; `src/editor/format.ts` and the File format section of `README.md`; `src/editor/clipboard.ts`; `src/editor/ink.ts`; undo and redo tests |
 | An AI task | `src/ai/tasks.ts`; a `mock` result for the browser preview; the AI section of `README.md` |
 | How the editor is built | "How the editor works" in `CLAUDE.md` |
-| A decision with reasons | "Decisions taken" in `docs/codemirror-plan.md` |
+| A decision with reasons | "Decisions taken" in `docs/codemirror-plan.md`, or in `docs/layout-plan.md` for the side panels and Review |
 
 If the code you build on needs restructuring, do that first, as its own change, with the
 `refactor` skill.

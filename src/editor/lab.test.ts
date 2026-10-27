@@ -1,4 +1,5 @@
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { redo, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import { applyFixes, longSentences, narrowChange, writingIssuesFrom } from "../ai/tasks";
 import { matchScore, rank } from "../palette/match";
@@ -49,6 +50,79 @@ describe("AI results on the page", () => {
       { from: 48, to: 56, kind: "grammar", note: "Use “you” here.", fix: "you" },
       { from: 73, to: 81, kind: "grammar", note: "A word twice.", fix: "plan" },
       { from: 83, to: 92, kind: "grammar", note: "Cut it.", fix: "" },
+    ]);
+  });
+
+  it("keeps a fix that adds or drops a space through a save, and leaves code alone", () => {
+    const state = stateFor("It ended.Next we left. Hello , world. Run `teh` now.\n");
+    const { spec, count } = applyFixes(state, [
+      { paragraph: 1, find: "ended.Next", replace: "ended. Next" },
+      { paragraph: 1, find: "Hello , world", replace: "Hello, world" },
+      { paragraph: 1, find: "`teh`", replace: "`the`" },
+    ]);
+    expect(count).toBe(2);
+    const next = state.update(spec).state;
+    expect(next.doc.toString()).toBe("It ended. Next we left. Hello, world. Run `teh` now.");
+    const saved = pageMarkdown(next, "");
+    expect(saved).toBe("It {{ended.Next|>~ended. Next}} we left. {{Hello ,|>~Hello,}} world. Run `teh` now.\n");
+    const back = parsePage(saved);
+    expect(back.text).toBe("It ended. Next we left. Hello, world. Run `teh` now.");
+    expect(back.alts.map((a) => a.variants)).toEqual([
+      ["ended.Next", "ended. Next"],
+      ["Hello ,", "Hello,"],
+    ]);
+  });
+
+  it("leaves a fix out where its alternative would save a different page", () => {
+    const count = (md: string, find: string, replace: string) =>
+      applyFixes(stateFor(`${md}\n`), [{ paragraph: 1, find, replace }]).count;
+    // The whole word would cut into a ghost, take in code, or start a line with list or heading markup.
+    expect(count("We {-met.Then-},now go.", ",now", ", now")).toBe(0);
+    expect(count("Set `max size`=10.Then restart.", "10.Then", "10. Then")).toBe(0);
+    expect(count("-Buy milk", "-Buy", "- Buy")).toBe(0);
+    expect(count("#Setup", "#Setup", "# Setup")).toBe(0);
+    expect(count("> -  Teh cat sat.", "-  Teh", "- Teh")).toBe(0);
+    expect(count("- One.\n  -  Teh cat sat.", "-  Teh", "- Teh")).toBe(0);
+    expect(count("Run `npm install to start.", "`npm install", "`npm install`")).toBe(0);
+    expect(count("Some text here.\n\n    teh = 1", "teh", "the")).toBe(0);
+  });
+
+  it("skips a fix that overlaps one before it", () => {
+    const state = stateFor("We met.Then,now go.\n");
+    const { spec, count } = applyFixes(state, [
+      { paragraph: 1, find: "met.Then", replace: "met. Then" },
+      { paragraph: 1, find: ",now", replace: ", now" },
+    ]);
+    expect(count).toBe(1);
+    const next = state.update(spec).state;
+    expect(next.doc.toString()).toBe("We met. Then,now go.");
+    expect(pageMarkdown(next, "")).toBe("We {{met.Then|>~met. Then}},now go.\n");
+  });
+
+  it("undoes and redoes typo fixes", () => {
+    let state = stateFor("The cat sat on teh mat.\n");
+    state = state.update(applyFixes(state, [{ paragraph: 1, find: "on teh mat", replace: "on the mat" }]).spec).state;
+    expect(pageMarkdown(state, "")).toBe("The cat sat on {{teh|>~the}} mat.\n");
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    expect(pageMarkdown(state, "")).toBe("The cat sat on teh mat.\n");
+    step(redo);
+    expect(pageMarkdown(state, "")).toBe("The cat sat on {{teh|>~the}} mat.\n");
+  });
+
+  it("leaves Claude's writing issues in code and ghosts alone, and marks each spot once", () => {
+    const state = stateFor("Run `teh` now. {-We recieve it.-}\n\n```\nwe recieve it\n```\n\nthe cat and the cat.\n\n    teh = 1\n");
+    const issues = writingIssuesFrom(state, [
+      { paragraph: 1, find: "teh", replace: "the", reason: "Spelling." },
+      { paragraph: 1, find: "We recieve it.", replace: "We receive it.", reason: "Spelling." },
+      { paragraph: 2, find: "recieve", replace: "receive", reason: "Spelling." },
+      { paragraph: 3, find: "the cat", replace: "the dog", reason: "One." },
+      { paragraph: 3, find: "the cat", replace: "the dog", reason: "Two." },
+      { paragraph: 4, find: "teh", replace: "the", reason: "Indented code." },
+    ]);
+    expect(issues).toEqual([
+      { from: 58, to: 61, kind: "grammar", note: "One.", fix: "dog" },
+      { from: 70, to: 73, kind: "grammar", note: "Two.", fix: "dog" },
     ]);
   });
 

@@ -17,7 +17,7 @@ import {
   wordRangeAt,
 } from "./commands";
 import { Layers, MARKDOWN_EXTENSIONS, serializePage } from "./format";
-import { highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
+import { applyWritingFix, highlights, HighlightSettings, highlightReport, issueAt, writingIssues } from "./highlights";
 import { inkLayers } from "./ink";
 import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
@@ -241,7 +241,8 @@ export function describe(state: EditorState): EditorInfo {
     const writing = writingIssues(state);
     for (const i of [...report.issues, ...(writing ?? [])]) counts[i.kind] += 1;
     const at = issueAt(state, state.selection.main.head);
-    const fix = at && "fix" in at && at.fix ? at.fix : null;
+    // No fix to offer where it can't apply, such as over an alternative.
+    const fix = at && "fix" in at && applyWritingFix(state, at) ? at.fix : null;
     checks = {
       grade: report.grade,
       sentences: report.sentences,

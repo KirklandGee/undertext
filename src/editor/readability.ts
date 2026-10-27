@@ -60,6 +60,9 @@ const ari = (letters: number, words: number, sentences: number) =>
 /** Lines that hold no prose: headings, rules, tables, HTML, and link definitions. */
 const NOT_PROSE = /^ {0,3}(?:#{1,6}(?:\s|$)|([-*_])(?:\s*\1){2,}\s*$|=+\s*$|\||<|\[[^\]]+\]:\s)/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+/** A line under a paragraph that makes it a heading. */
+const SETEXT = /^ {0,3}(?:=+|-+)[ \t]*$/;
+const INDENTED = /^(?: {4}|\t)/;
 const QUOTE = /^\s*(?:>\s?)*/;
 const ITEM = /^(?:[-*+]|\d{1,9}[.)])\s+(?:\[[ xX]\]\s+)?/;
 /** Inline markup that holds no prose: code, images, link addresses, HTML tags, and bare URLs. */
@@ -81,6 +84,9 @@ function proseBlocks(page: string): { from: number; text: string }[] {
     lines = [];
   };
   let fence: string | null = null;
+  // A paragraph that a setext line can turn into a heading. In a list, an indented line is prose.
+  let plain = false;
+  let inList = false;
   let pos = 0;
   for (const line of page.split("\n")) {
     const at = pos;
@@ -90,20 +96,36 @@ function proseBlocks(page: string): { from: number; text: string }[] {
       if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !line.slice(f[0].length).trim()) fence = null;
       continue;
     }
+    // A block that starts at the left edge ends a list.
+    const edge = !/^\s/.test(line);
     if (f) {
       flush();
       fence = f[1];
+      if (edge) inList = false;
+      continue;
+    }
+    if (start >= 0 && plain && SETEXT.test(line)) {
+      start = -1;
+      lines = [];
       continue;
     }
     if (!line.trim() || NOT_PROSE.test(line)) {
       flush();
+      if (line.trim() && edge) inList = false;
       continue;
     }
+    // Indented code can't break into a paragraph, but it can start a block.
+    if (start < 0 && !inList && INDENTED.test(line)) continue;
     const quote = QUOTE.exec(line)![0].length;
     const item = ITEM.exec(line.slice(quote));
     if (item) flush();
     const lead = quote + (item ? item[0].length : 0);
-    if (start < 0) start = at;
+    const quoted = line.slice(0, quote).includes(">");
+    if (start < 0) {
+      start = at;
+      plain = !item && !quoted;
+      inList = Boolean(item) || (inList && INDENTED.test(line));
+    } else if (quoted) plain = false;
     lines.push(" ".repeat(lead) + line.slice(lead));
   }
   flush();
@@ -269,12 +291,16 @@ for (const [verb, plain] of Object.entries(NEGATED_VERBS)) {
 }
 const NEGATIVE = phrases([...NEGATIVE_FORMS.keys()]);
 
-const forms = (word: string) =>
-  word.includes(" ")
-    ? [word]
-    : word.endsWith("e")
-      ? [word, `${word}s`, `${word}d`, `${word.slice(0, -1)}ing`]
-      : [word, `${word}s`, `${word}es`, `${word}ed`, `${word}ing`];
+/** A word's forms, and some that don't exist, which never match. */
+function forms(word: string): string[] {
+  if (word.includes(" ")) return [word];
+  if (word.endsWith("e")) return [word, `${word}s`, `${word}d`, `${word.slice(0, -1)}ing`];
+  if (/[^aeiou]y$/.test(word)) return [word, `${word.slice(0, -1)}ies`, `${word.slice(0, -1)}ied`, `${word}ing`];
+  const out = [word, `${word}s`, `${word}es`, `${word}ed`, `${word}ing`];
+  // One vowel before the last consonant may double it: transmit, transmitted.
+  if (/[^aeiou][aeiou][bdgklmnprt]$/.test(word)) out.push(`${word}${word.at(-1)}ed`, `${word}${word.at(-1)}ing`);
+  return out;
+}
 
 const SIMPLER_FORMS = new Map(Object.entries(SIMPLER).flatMap(([word, plain]) => forms(word).map((f) => [f, plain])));
 const SIMPLER_WORDS = phrases([...SIMPLER_FORMS.keys()]);
@@ -390,24 +416,23 @@ function checkBlock(text: string): BlockResult {
   return result;
 }
 
-// Most keystrokes change one block. The rest come from here.
-const seen = new Map<string, BlockResult>();
+// Most keystrokes change one block. The rest come from the last page's results, and only those are
+// kept, so the cache never outgrows the page.
+let seen = new Map<string, BlockResult>();
 
 export function checkPage(page: string): Report {
   const report: Report = { issues: [], weakeners: 0, words: 0, letters: 0, sentences: 0, grade: null };
+  const kept = new Map<string, BlockResult>();
   for (const block of proseBlocks(page)) {
-    let result = seen.get(block.text);
-    if (!result) {
-      if (seen.size > 5000) seen.clear();
-      result = checkBlock(block.text);
-      seen.set(block.text, result);
-    }
+    const result = seen.get(block.text) ?? kept.get(block.text) ?? checkBlock(block.text);
+    kept.set(block.text, result);
     for (const i of result.issues) report.issues.push({ ...i, from: i.from + block.from, to: i.to + block.from });
     report.weakeners += result.weakeners;
     report.words += result.words;
     report.letters += result.letters;
     report.sentences += result.sentences;
   }
+  seen = kept;
   report.issues.sort((a, b) => a.from - b.from || b.to - a.to);
   if (report.words) report.grade = ari(report.letters, report.words, report.sentences);
   return report;

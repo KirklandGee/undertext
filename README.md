@@ -71,7 +71,7 @@ storage, and answers AI requests with fake results so you can try the UI.
 | ⌘⇧E | Review: typo fixes, checks that mark text, and trims. Press again in Review to close it. Esc goes back to the page. |
 | ⌥J ⌥K | Next / previous version at the cursor (word or sentence, else paragraph) |
 | ⌥⇧J ⌥⇧K | Next / previous version of the paragraph |
-| ⌥L ⌥H | Jump to the next / previous item that has versions (or a Review mark or cut) |
+| ⌥L ⌥H | Jump to the next / previous item that has versions (or a mark or cut from a Review check) |
 | hover + ↑ ↓ | Cycle the hovered word, sentence, or paragraph |
 | ⌘⇧D | New version of the current paragraph |
 | ⌘/ | Ghost the selection, or revive the ghost at the cursor |
@@ -144,18 +144,19 @@ update as you type.
   → strolled), fillers, hidden actions (made a decision → decide), and negatives (does not have →
   lacks). The lists follow what Hemingway marks.
 - **Simpler words** (green): utilize → use, in order to → to.
-- **Writing issues** (pink): grammar and style, from Claude. See below.
+- **Writing issues** (pink): grammar, spelling, and wrong words, from Claude. See below.
 - Click a row to go to the next one. The eye hides a kind on the page but keeps its count. Put the
-  caret on a highlight to read why it's marked. Ghosted text isn't checked. The rules are for
-  English.
+  caret on a highlight to read why it's marked. Ghosted text and code aren't checked. The rules are
+  for English.
 
 The AI features are optional. They never rewrite your text on their own: every result is something
 you can see and undo.
 
 - **Alternatives (⌘⇧G):** about 6 suggestions join the word's versions. Your current text stays.
-- **Find writing issues:** Claude marks grammar and style issues in pink, each with a reason and a
-  fix. Put the caret on one and choose "Use" in Review, or "Use the fix" in ⌘K: the fix becomes an
-  alternative, and ⌥K restores your text. A mark goes away when you edit its text.
+- **Find writing issues:** Claude marks grammar, spelling, and wrong words in pink, each with a
+  reason and a fix. Review opens to show them. Put the caret on one and choose "Use" in Review, or
+  "Use the fix" in ⌘K: the fix becomes an alternative, and ⌥K restores your text. A mark goes away
+  when you edit its text. Code is left alone.
 - **Fix punctuation and typos:** each fix becomes an alternative with the fix active. ⌥K restores
   your text.
 - **Checks:** weakest sentences, convoluted sentences, off-tone words, and hedges and filler. Marks
