@@ -167,6 +167,12 @@ describe("the page", () => {
     ]);
   });
 
+  it("takes the page's dash style from its prose, not from code", () => {
+    expect(page("```\na — b — c — d\n```\n\nIt was late -- very late.\n")).toEqual([
+      ["late -- very", "Two hyphens for a dash.", "late—very"],
+    ]);
+  });
+
   it("follows a new dash style in a block it has seen", () => {
     expect(page("It was late -- very late.\n")).toEqual([["late -- very", "Two hyphens for a dash.", "late—very"]]);
     expect(page("One — two. Three — four.\n\nIt was late -- very late.\n")).toEqual([

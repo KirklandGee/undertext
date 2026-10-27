@@ -549,3 +549,101 @@ describe("what counts as prose", () => {
     expect(checkPage(text)).toEqual(report);
   });
 });
+
+describe("dashes", () => {
+  const dashes = (text: string) =>
+    checkPage(text)
+      .issues.filter((i) => i.kind === "dash" || i.kind === "dashStyle")
+      .map((i) => [i.kind, text.slice(i.from, i.to), i.note, i.fix]);
+  const ANOTHER = "Another dash in this paragraph.";
+
+  it("leave a paragraph's first use alone, and mark each use after it", () => {
+    expect(dashes("My plan — bold as ever — failed. It was late — very late. We left — fast.")).toEqual([
+      ["dash", "— very late.", ANOTHER, undefined],
+      ["dash", "— fast.", ANOTHER, undefined],
+    ]);
+    // A pair is one use: the aside between its dashes.
+    expect(dashes("It was late — very late. My plan — bold as ever — failed.")).toEqual([
+      ["dash", "— bold as ever —", "Another pair of dashes in this paragraph.", undefined],
+    ]);
+    // A third dash in one sentence is a second use.
+    expect(dashes("A plan — bold as ever — failed — at once.")).toEqual([["dash", "— at once.", ANOTHER, undefined]]);
+    // Spaced en dashes count too, and so does one with a number on one side only.
+    expect(dashes("It was late – very late. We had 5 – the rest left.")).toEqual([["dash", "– the rest left.", ANOTHER, undefined]]);
+  });
+
+  it("end a single dash's mark at its line", () => {
+    expect(dashes("It was late — very late. We left —\nfast, and slept.")).toEqual([["dash", "—", ANOTHER, undefined]]);
+  });
+
+  it("start again in each paragraph", () => {
+    expect(dashes("One — two.\n\nThree — four.\n\n- An item — here.\n- Another — there.")).toEqual([]);
+  });
+
+  it("leave ranges, hyphens, closed en dashes, and a run of dashes alone", () => {
+    expect(dashes("Pages 10–20, a well-known fact, the Paris–London train, and one — dash. And 1990 – 1995.")).toEqual([]);
+    expect(dashes("Mrs. C—— came. It was late — very late.")).toEqual([]);
+    // Days, hours, money, and decades make ranges too, so they set no style.
+    expect(dashes("Open Monday – Friday, 9am – 5pm, for $5 – $10, in the 1990s – 2000s.\n\nIt was late—very late.")).toEqual([]);
+  });
+
+  it("leave attributions, dashes that start a line, and cut-off speech alone", () => {
+    expect(dashes("> The best. — Red Smith\n> — Someone else.")).toEqual([]);
+    expect(dashes("— apples\n— plums\n— pears")).toEqual([]);
+    expect(dashes("“I—I—it's fine.” He paused. “But—” She left. “—and then?”")).toEqual([]);
+    expect(dashes("It was late — very late. We said no—no.")).toEqual([]);
+    expect(dashes("It was late — very late. And then—")).toEqual([]);
+    // An attribution after a quote's last sentence.
+    expect(dashes("> It was late — very late. Write daily. — Red Smith")).toEqual([]);
+    // A straight quote closes after a word: "go"—and is a dash.
+    expect(dashes('It was late — very late. We said "go"—and went.')).toEqual([["dash", '—and went.', ANOTHER, undefined]]);
+  });
+
+  it("mark a dash in the page's less common style, with the page's style as its fix", () => {
+    expect(dashes("One — two.\n\nThree — four.\n\nFive—six.")).toEqual([
+      ["dashStyle", "Five—six.", "This page spaces its dashes: “word — word”.", "Five — six."],
+    ]);
+    expect(dashes("One—two.\n\nThree—four.\n\nFive — six.")).toEqual([
+      ["dashStyle", "Five — six.", "This page writes its dashes closed up: “word—word”.", "Five—six."],
+    ]);
+    expect(dashes("One – two.\n\nThree – four.\n\nFive — six.")).toEqual([
+      ["dashStyle", "Five — six.", "This page uses spaced en dashes: “word – word”.", "Five – six."],
+    ]);
+    // A spaced pair on a closed page is one mark, with one fix.
+    expect(dashes("One—two.\n\nThree—four.\n\nA plan — bold — failed.")).toEqual([
+      ["dashStyle", "plan — bold — failed.", "This page writes its dashes closed up: “word—word”.", "plan—bold—failed."],
+    ]);
+    // Speech keeps its dashes as written.
+    expect(dashes("One — two.\n\nThree — four.\n\n“I—I don't know,” he said. “No—no—no!”")).toEqual([]);
+    // A dash beside a quote or bracket, or spaced on one side only, has no style to fix.
+    expect(dashes("One — two.\n\nThree — four.\n\nFive — six.\n\n“Wait—” she said.\n\n(No—) he said.\n\nSo —then.")).toEqual([]);
+  });
+
+  it("mark a dash once, as a use too many before a style to fix", () => {
+    expect(dashes("One — two.\n\nThree — four.\n\nIt was late — very late. Five—six.")).toEqual([
+      ["dash", "—six.", ANOTHER, undefined],
+    ]);
+  });
+
+  it("read a dash beside a link, an address, or code as no style, and keep the markup", () => {
+    expect(dashes("One—two.\n\nThree—four.\n\nSee [Five](http://a.com) — six.\n\nOr `x` — y.\n\nOr http://a.com — z.")).toEqual([]);
+  });
+
+  it("take the page's style from its prose and headings, not from code or ranges", () => {
+    expect(dashes("```\na — b — c — d\n```\n\n2019 – 2021. 2021 – 2023.\n\nOne—two.")).toEqual([]);
+    expect(dashes("# One — two\n\n## Three — four\n\nFive—six.")).toEqual([
+      ["dashStyle", "Five—six.", "This page spaces its dashes: “word — word”.", "Five — six."],
+    ]);
+  });
+
+  it("follow the page's style as it changes", () => {
+    expect(dashes("One—two.\n\nFive — six.")).toEqual([
+      ["dashStyle", "Five — six.", "This page writes its dashes closed up: “word—word”.", "Five—six."],
+    ]);
+    expect(dashes("One — two.\n\nThree — four.\n\nFive — six.")).toEqual([]);
+  });
+
+  it("count neither kind as a weakener", () => {
+    expect(checkPage("It was late — very late. We left — fast.").weakeners).toBe(1);
+  });
+});

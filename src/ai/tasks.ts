@@ -3,7 +3,7 @@ import { addAiAlternatives, blockAt, countWords, findAlt, syncedVariants, touche
 import { WritingIssue } from "../editor/highlights";
 import { LabSpan } from "../editor/lab";
 import { layersOf } from "../editor/layers";
-import { checkPage, Kind } from "../editor/readability";
+import { checkPage, dashesIn, hyphenDashes, Kind } from "../editor/readability";
 import { guessesFor, misspellings } from "../editor/spelling";
 import { callClaude } from "./client";
 
@@ -93,9 +93,8 @@ const VOICE =
 const NO_DASHES =
   "Use no more dashes than the marked text has: no — or – between words, no --, and no hyphen with a space on each side.";
 
-/** Dashes as NO_DASHES names them: an en dash between numbers is a range, as in 1990–1995. */
-const DASH = /[—―⸺⸻]|--|(?<=\s)-(?=\s)|(?<!\d)–|–(?!\d)/g;
-const dashes = (text: string) => text.match(DASH)?.length ?? 0;
+/** Dashes as Review counts them, and hyphens typed for one. A range, as 1990–1995, isn't a dash. */
+const dashes = (text: string) => dashesIn(text).length + hyphenDashes(text);
 
 /** Claude's texts that have no more dashes than the alternative's text on the page. */
 function noNewDashes(state: EditorState, altId: string, texts: string[]): string[] {
@@ -374,6 +373,7 @@ const REWRITE_GOALS: Partial<Record<Kind, string>> = {
   hard: "Make it easier to read: fewer words, plainer words, or two sentences.",
   veryHard: "Make it easier to read: fewer words, plainer words, or two sentences.",
   hidden: "Use a plain verb in place of the noun that hides the action, as “decided” for “made a decision”.",
+  dash: "Use a comma, a colon, parentheses, or a period in place of each dash, and no dash at all.",
 };
 
 /** How the prompt names each kind of mark. */
@@ -393,12 +393,13 @@ export function rewritePrompt(state: EditorState, altId: string, kind: Kind, phr
   const marked = `${para.slice(0, a)}⟦${para.slice(a, b)}⟧${para.slice(b)}`;
   const flagged = MARK_NAMES[kind] && phrase !== para.slice(a, b) ? ` The checks flagged “${phrase}” as ${MARK_NAMES[kind]}.` : "";
   const others = syncedVariants(state, r).filter((v) => v !== para.slice(a, b));
+  // A dash too many has its own goal: no dash at all.
+  const dashRule = kind === "dash" ? "" : ` ${NO_DASHES} Use a comma, a colon, parentheses, or a period instead.`;
   return {
     system:
       `${VOICE} Rewrite the part of the writer's paragraph marked with ⟦ ⟧. ${REWRITE_GOALS[kind] ?? ""}${flagged} ` +
       "Keep its meaning, facts, and tone, and add nothing new. Each rewrite replaces the marked text on its own, " +
-      `on one line. Make them differ from each other, and from the rewrites the writer has already. ${NO_DASHES} ` +
-      "Use a comma, a colon, parentheses, or a period instead.",
+      `on one line. Make them differ from each other, and from the rewrites the writer has already.${dashRule}`,
     prompt:
       `Paragraph:\n${marked}\n\nRewrites the writer has already: ${others.length ? others.map((v) => `“${v}”`).join(", ") : "none"}.\n\n` +
       "Suggest 6 rewrites of the marked text.",
@@ -421,8 +422,9 @@ export async function suggestRewrites(state: EditorState, altId: string, kind: K
   return answer.rewrites;
 }
 
-/** Whether a text still has the issue a mark was about. Hard and very hard count as one. */
+/** Whether a text still has the issue a mark was about. Hard and very hard count as one. A rewrite of a dash too many keeps none. */
 function stillHas(kind: Kind, text: string): boolean {
+  if (kind === "dash") return dashes(text) > 0;
   const sentence = (k: Kind) => k === "hard" || k === "veryHard";
   return checkPage(text).issues.some((i) => i.kind === kind || (sentence(kind) && sentence(i.kind)));
 }

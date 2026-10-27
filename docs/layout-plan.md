@@ -385,7 +385,14 @@ Six releases, in this order, each its own commit after a review.
    marked: a pair from dash to dash, a single dash to the end of its sentence. The popover offers
    "Suggest rewrites", aimed at a comma, a colon, parentheses, or a period, and a rewrite that
    still has a dash is dropped. A dash in the page's less common style is marked too, with the
-   page's style as its fix.
+   page's style as its fix. A range, a dash that starts a line (a bullet or an attribution), a run
+   such as "C——", and speech that breaks off ("But—”") or stammers ("I—I") don't count. A dash too
+   many is marked once, not also for its style. The row reads "N dashes to check", in teal, as
+   purple is the accent; its eye hides both kinds. The style fix becomes an alternative, as other
+   live-check suggestions do: a style choice, where release 3's fixes correct mistakes. The page's
+   style comes from its prose, without code, link addresses, or ranges. Known misses: a "?" inside
+   an aside splits its pair, and two single dashes in one sentence read as a pair. A dash too many
+   that runs across a line break offers no rewrite, as a hard sentence there doesn't.
 5. **Smart quotes and dashes as you type.** Always on, except in code. `"` and `'` become curly:
    opening after a space, an opening bracket, or the start of a line, else closing. An apostrophe
    is a closing quote. A second `-` turns "--" into a dash: an en dash where the page's style is

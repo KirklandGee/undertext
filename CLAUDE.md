@@ -64,8 +64,8 @@ the change, whether an agent or a review tool runs it.
 - `preview.ts` hides Markdown syntax away from the cursor. `keys.ts` has Enter, Backspace, and the
   formatting, heading, and list commands. `ink.ts` draws underlines, gutter lines, and dots.
   `lab.ts` holds Review's temporary marks and cuts. `readability.ts` finds hard sentences,
-  weakeners, and simpler words in plain text, and imports nothing. `highlights.ts` keeps them, and
-  Claude's writing issues, and draws them while Review is open. `spelling.ts` asks the Mac's spell
+  weakeners, simpler words, and dashes in plain text, and imports nothing. `highlights.ts` keeps
+  them, and Claude's writing issues, and draws them while Review is open. `spelling.ts` asks the Mac's spell
   checker (`src-tauri/src/spelling.rs`) about each changed paragraph after a pause, and keeps its
   answers by paragraph text. `punctuation.ts` finds punctuation mistakes in plain text, most with one
   right fix, and imports only `readability.ts`. `proofing.ts` marks them as you write, with Review open or

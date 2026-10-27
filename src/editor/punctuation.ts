@@ -3,7 +3,7 @@
 // -ly adverb, a bracket or quote with no partner, and a decade with an apostrophe. The rules are for
 // English. No editor code, so the tests run on plain strings.
 
-import { DASHES, DashStyle, dashStyle, LY_WORDS, proseBlocks } from "./readability";
+import { DASHES, DashStyle, dashStyle, isRange, LY_WORDS, proseBlocks } from "./readability";
 
 export { dashStyle, type DashStyle };
 
@@ -53,13 +53,7 @@ const LY_ADJECTIVES = new Set(
 
 const SPACE = /[\s\uFFFC]/;
 
-/** Days and months, as in "Monday - Friday": a range, not a dash. */
-const DATES =
-  /^(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\.?$/i;
-/** Words that end a range of numbers, as in "2019 - present". */
-const RANGE_ENDS = /^(?:present|now|today|noon|midnight|date)$/i;
-/** A word without the brackets, quotes, and punctuation around it. */
-const bare = (word: string) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+
 
 /** Mistakes in one block of prose. Offsets are in `text`; skipped text is SKIPPED. */
 export function punctuationIn(text: string, style: DashStyle): Mistake[] {
@@ -150,9 +144,7 @@ export function punctuationIn(text: string, style: DashStyle): Mistake[] {
     const to = end(b);
     const right = text.slice(b, to);
     // Numbers, hours, days, and months make a range. Two hyphens between numbers become an en dash.
-    const [l, r] = [bare(left), bare(right)];
-    const range =
-      (/\d/.test(l) && (/\d/.test(r) || RANGE_ENDS.test(r))) || (RANGE_ENDS.test(l) && /\d/.test(r)) || (DATES.test(l) && DATES.test(r));
+    const range = isRange(left, right);
     if (range && pair && /\d$/.test(left) && /^\d/.test(right)) add(from, to, "Two hyphens for a range.", `${left}–${right}`);
     else if (!range) add(from, to, pair ? "Two hyphens for a dash." : "A hyphen for a dash.", left + dash + right);
   }
@@ -229,9 +221,10 @@ let seen = new Map<string, Mistake[]>();
  * paragraph, as in fiction, when that paragraph opens with one.
  */
 export function checkPunctuation(page: string, raw: string): Mistake[] {
-  const style = dashStyle(page);
-  const kept = new Map<string, Mistake[]>();
   const blocks = proseBlocks(page, { headings: true });
+  // The page's style comes from its prose, as pageDashStyle has it.
+  const style = dashStyle(blocks.map((b) => b.text).join("\n\n"));
+  const kept = new Map<string, Mistake[]>();
   const out: Mistake[] = [];
   blocks.forEach((block, i) => {
     const source = raw.slice(block.from, block.from + block.text.length);

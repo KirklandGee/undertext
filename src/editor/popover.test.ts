@@ -583,3 +583,43 @@ describe("the popover on a punctuation mistake", () => {
     expect(closed.update(firstAction(closed)!.spec!).state.doc.toString()).toBe(page.replace("proposal ,", "proposal,"));
   });
 });
+
+describe("the popover on a dash", () => {
+  it("offers rewrites without the dash, for a dash too many", () => {
+    // "— very late." at 37–49 is the paragraph's second use.
+    // A click on "late", as "very" is an intensifier, the shorter mark.
+    const state = click(stateFor("My plan — bold — failed. It was late — very late.\n"), 46);
+    expect(shown(state)).toEqual(["dash", "— very late."]);
+    expect(popoverContent(state, popoverAt(state)!)).toEqual({
+      title: "Dash",
+      text: "One dash, or one pair, per paragraph reads well. Try a comma, a colon, parentheses, or a period.",
+      why: null,
+      actions: [{ kind: "rewrite", label: "Suggest rewrites" }],
+      hint: "⌥↩ suggests rewrites · esc closes",
+    });
+    expect(rewriteRange(state, popoverAt(state)!)).toEqual({ from: 25, to: 49 });
+    expect(firstAction(state)).toEqual({ rewrite: { from: 25, to: 49, kind: "dash", phrase: "— very late." } });
+  });
+
+  it("comes after a punctuation mistake in its words, as a mark to the sentence's end", () => {
+    const state = click(stateFor("It was late — very late. We left — fast , then.\n"), 40);
+    expect(shown(state)).toEqual(["punctuation", "fast ,"]);
+  });
+
+  it("uses the page's style for a dash in another, as an alternative", () => {
+    const md = "One — two.\n\nThree — four.\n\nFive—six.\n";
+    const state = click(stateFor(md), 33);
+    expect(shown(state)).toEqual(["dashStyle", "Five—six."]);
+    expect(popoverContent(state, popoverAt(state)!)).toEqual({
+      title: "Dash style",
+      text: "Write the page's dashes one way.",
+      why: null,
+      actions: [{ kind: "fix", label: "Five — six." }],
+      hint: "⌥↩ uses it · esc closes",
+    });
+    const fixed = state.update(firstAction(state)!.spec!).state;
+    const saved = "One — two.\n\nThree — four.\n\n{{Five—six.|>~Five — six.}}\n";
+    expect(pageMarkdown(fixed, "")).toBe(saved);
+    expect(undoRedo(fixed)).toEqual([md, saved]);
+  });
+});

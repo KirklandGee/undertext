@@ -183,6 +183,10 @@ update as you type.
   → strolled), fillers, hidden actions (made a decision → decided), and negatives (does not have →
   lacks). The lists follow what Hemingway marks.
 - **Simpler words** (green): utilize → use, in order to → to.
+- **Dashes** (teal): a paragraph may use dashes once, as a pair around an aside or one dash before a
+  break. Each use after that is marked. A dash in another style than the page's is marked too, and
+  its fix becomes an alternative. A range such as 1990 – 1995, a dash that starts a line, and speech
+  that breaks off ("But—”") don't count.
 - **Writing issues** (pink): grammar, spelling, and wrong words, from Claude. See below.
 - Click a row to go to the next one. The eye hides a kind on the page but keeps its count. Ghosted
   text and code aren't checked. The rules are for English.
@@ -191,10 +195,10 @@ update as you type.
 your words, becomes an alternative, and ⌥K brings yours back. An adverb, qualifier, intensifier, or
 filler can be ghosted, so you read the sentence without it, or removed. A click on ghosted text
 offers "Remove it" and "Revive it". Removing tidies the spaces, commas, and capital around the
-words, and ⌘Z brings them back. Passive voice, hard sentences, and
-hidden actions with no suggestion offer "Suggest rewrites": Claude rewrites the sentence to fix
-it. The rewrites that the checks no longer mark join it as alternatives. A rewrite with more dashes
-than your sentence is left out. Ask again for more.
+words, and ⌘Z brings them back. Passive voice, hard sentences, hidden actions with no suggestion,
+and a dash too many offer "Suggest rewrites": Claude rewrites the sentence to fix it. The rewrites
+that the checks no longer mark join it as alternatives. A rewrite with more dashes than your
+sentence is left out, and for a dash too many, one with any dash. Ask again for more.
 Only that button, ⌥↩ on such a mark, or its ⌘K entry sends the paragraph to Claude. ⌥↩ does the first action at
 the cursor, and ⌘K lists it too. Where none fits, say in code or inside an alternative, the popover
 says why. It closes when you type, move off the mark, or press Esc.

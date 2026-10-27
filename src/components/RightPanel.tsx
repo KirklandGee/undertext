@@ -188,6 +188,7 @@ function Readability({ checks, words, hidden, onToggle, onJump, onUseFix, onUseA
         counts.simpler,
         counts.simpler === 1 ? "word with a simpler alternative" : "words with a simpler alternative",
       )}
+      {row(["dash", "dashStyle"], "dash", counts.dash + counts.dashStyle, counts.dash + counts.dashStyle === 1 ? "dash to check" : "dashes to check")}
       {checks.ran && row(["grammar"], "grammar", counts.grammar, counts.grammar === 1 ? "writing issue" : "writing issues")}
       {checks.fixAll > 0 && (
         <button className="hl-fix hl-fix-all" onClick={onUseAll} title="Uses every fix that fits. ⌘Z brings your words back.">

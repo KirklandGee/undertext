@@ -213,8 +213,26 @@ describe("AI results on the page", () => {
     state = stateFor("It ran from 1990 to 1995.\n");
     const years = createAlt(state, 7, 24)!;
     state = state.update(years.spec).state;
-    state = state.update(addSuggestions(state, years.id, ["from 1990–1995", "from 1990 – 1995"])!).state;
-    expect(findAlt(state, years.id)!.variants).toEqual(["from 1990 to 1995", "from 1990–1995"]);
+    state = state.update(addSuggestions(state, years.id, ["from 1990–1995", "from 1990 – 1995", "on the Paris–London train"])!).state;
+    expect(findAlt(state, years.id)!.variants).toEqual(["from 1990 to 1995", "from 1990–1995", "from 1990 – 1995", "on the Paris–London train"]);
+  });
+
+  it("asks for rewrites of a dash too many with no dash left, and keeps only those", () => {
+    let state = stateFor("My plan — bold — failed. It was late — very late.\n");
+    const made = createAlt(state, 25, 49)!;
+    state = state.update(made.spec).state;
+    expect(rewritePrompt(state, made.id, "dash", "— very late.")!.system).toContain(
+      "Use a comma, a colon, parentheses, or a period in place of each dash, and no dash at all.",
+    );
+    // One rule about dashes: no second one that would allow some.
+    expect(rewritePrompt(state, made.id, "dash", "— very late.")!.system).not.toContain("Use no more dashes");
+    const rewrites = ["It was late, very late.", "It was very late.", "It was late – very late.", "It was late — so late.", "It was late -- so late."];
+    state = state.update(addRewrites(state, made.id, "dash", rewrites)!).state;
+    expect(findAlt(state, made.id)!.variants).toEqual(["It was late — very late.", "It was late, very late.", "It was very late."]);
+    // A range or a hyphenated word isn't a dash.
+    const ranges = ["It was late, on the Paris–London train.", "It was late, open 9am - 5pm.", "It was late, Monday - Friday."];
+    state = state.update(addRewrites(state, made.id, "dash", ranges)!).state;
+    expect(findAlt(state, made.id)!.variants.slice(3)).toEqual(ranges);
   });
 
   it("asks Claude not to add dashes", () => {

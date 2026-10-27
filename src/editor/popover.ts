@@ -66,13 +66,14 @@ function punctuationMarkAt(state: EditorState, pos: number): PunctuationMark | n
 /**
  * The mark a click at `pos` opens: a ghost, as ghosted text isn't marked, then a misspelled word,
  * then the innermost Review mark. A punctuation mistake comes before a Review mark on a whole
- * sentence, and after one on its words, which Review is open to show.
+ * sentence or a dash too many, and after one on its words, which Review is open to show.
  */
 function markAt(state: EditorState, pos: number): Mark | null {
   const first = ghostMarkAt(state, pos) ?? spellingMarkAt(state, pos);
   if (first) return first;
   const issue = issueAt(state, pos);
-  if (issue && issue.kind !== "hard" && issue.kind !== "veryHard") return issue;
+  // A dash too many runs to its sentence's end, as a sentence mark does.
+  if (issue && issue.kind !== "hard" && issue.kind !== "veryHard" && issue.kind !== "dash") return issue;
   return punctuationMarkAt(state, pos) ?? issue;
 }
 
@@ -156,7 +157,7 @@ const LEARN: PopoverAction = { kind: "learn", label: "Learn spelling" };
 const GUESSES = 4;
 
 const CUTS: readonly Kind[] = ["adverb", "qualifier", "intensifier", "filler"];
-const SENTENCES: readonly Kind[] = ["passive", "hard", "veryHard"];
+const SENTENCES: readonly Kind[] = ["passive", "hard", "veryHard", "dash"];
 
 /** A hard sentence itself, or the sentence around another mark, after any list or quote marker. */
 function sentenceAround(state: EditorState, issue: Issue): { from: number; to: number } {
@@ -323,6 +324,8 @@ const TITLES: Record<Mark["kind"], string> = {
   hidden: "Hidden action",
   negative: "Negative",
   simpler: "Simpler word",
+  dash: "Dash",
+  dashStyle: "Dash style",
   grammar: "Writing issue",
 };
 
@@ -341,6 +344,8 @@ const ADVICE: Record<Mark["kind"], string> = {
   hidden: "The action hides in a noun. Use the verb.",
   negative: "Say what is, not what isn't.",
   simpler: "A plainer word says the same.",
+  dash: "One dash, or one pair, per paragraph reads well. Try a comma, a colon, parentheses, or a period.",
+  dashStyle: "Write the page's dashes one way.",
   grammar: "",
 };
 
