@@ -1,5 +1,6 @@
 import { ChangeSet, EditorSelection, EditorState, Facet, StateEffect, StateField, TransactionSpec } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { wordRangeAt } from "./commands";
 import { pageText } from "./highlights";
 import { layersOf } from "./layers";
 import { proseBlocks } from "./readability";
@@ -20,6 +21,9 @@ export interface Speller {
   check(texts: string[], sample: string): Promise<Checked[]>;
   guesses(word: string, language: string | null): Promise<string[]>;
   learn(word: string): void;
+  /** Whether the word is in the Mac's own word list. */
+  learned(word: string): Promise<boolean>;
+  unlearn(word: string): Promise<void>;
 }
 
 export interface Misspelling {
@@ -44,6 +48,7 @@ interface SpellingState {
 
 const checkedEffect = StateEffect.define<{ text: string; checked: Checked }[]>();
 const learnEffect = StateEffect.define<string>();
+const unlearnEffect = StateEffect.define<string>();
 const guessesEffect = StateEffect.define<{ word: string; guesses: readonly string[] }>();
 
 const mark = Decoration.mark({ class: "sp" });
@@ -114,6 +119,13 @@ export const spellingField = StateField.define<SpellingState>({
       } else if (e.is(learnEffect)) {
         const learned = e.value.toLowerCase();
         next = { ...next, learned: new Set(next.learned).add(learned), words: next.words.filter((w) => w.word.toLowerCase() !== learned) };
+      } else if (e.is(unlearnEffect)) {
+        // The checker passed the word in these answers, or they were hidden as learned: ask again.
+        const word = e.value.toLowerCase();
+        const learned = new Set(next.learned);
+        learned.delete(word);
+        const cache = new Map([...next.cache].filter(([text]) => !text.toLowerCase().includes(word)));
+        next = { ...next, learned, cache };
       } else if (e.is(guessesEffect)) {
         next = { ...next, guesses: new Map(next.guesses).set(e.value.word, e.value.guesses) };
       }
@@ -164,10 +176,19 @@ export function fixSpelling(state: EditorState, word: Misspelling, guess: string
 /** Teaches the Mac's checker a word, for every app, and unmarks it on the page in any case. */
 export const learnSpelling = (word: string): TransactionSpec => ({ effects: learnEffect.of(word) });
 
+/** Takes a word out of the Mac's own word list. The next check marks it, if it's misspelled. */
+export const unlearnSpelling = (word: string): TransactionSpec => ({ effects: unlearnEffect.of(word) });
+
 // ---------------------------------------------------------------------------
 // Asking the checker
 
 const spellerFacet = Facet.define<Speller, Speller | null>({ combine: (all) => all[0] ?? null });
+/** Shows a line in the bar under the page. */
+type Notice = (message: string) => void;
+const noticeFacet = Facet.define<Notice, Notice | null>({ combine: (all) => all[0] ?? null });
+
+/** What the bar says after "Learn spelling": the way back too, as ⌘Z can't undo it. */
+export const learnedNotice = (word: string) => `Your Mac learned “${word}”, for every app. Right-click it to unlearn it.`;
 
 /** After a pause in typing, so a keystroke never waits for the checker. */
 const PAUSE = 400;
@@ -184,12 +205,24 @@ export async function loadGuesses(view: EditorView, word: Misspelling): Promise<
   return guesses;
 }
 
+/** The word at `pos` when it's in the Mac's own word list, for "Unlearn spelling". Null on a misspelled word. */
+export async function learnedWordAt(view: EditorView, pos: number): Promise<string | null> {
+  const speller = view.state.facet(spellerFacet);
+  const range = wordRangeAt(view.state, pos);
+  // Quotes and dashes around the word aren't part of it.
+  const word = range && view.state.doc.sliceString(range.from, range.to).replace(/^['’-]+|['’-]+$/g, "");
+  if (!speller || !word || misspellingAt(view.state, pos)) return null;
+  return (await speller.learned(word)) ? word : null;
+}
+
 const checker = ViewPlugin.fromClass(
   class {
     timer: ReturnType<typeof setTimeout> | undefined;
     /** Texts sent to the checker and not answered yet. */
     asked = new Set<string>();
     guessing = new Set<string>();
+    /** Unlearning calls not done yet. A check before they end would get the old answer, and keep it. */
+    unlearning = 0;
     /** Whether the page changed since the last check. */
     edited = false;
     gone = false;
@@ -200,7 +233,23 @@ const checker = ViewPlugin.fromClass(
 
     update(u: ViewUpdate) {
       const speller = u.state.facet(spellerFacet);
-      for (const tr of u.transactions) for (const e of tr.effects) if (e.is(learnEffect)) speller?.learn(e.value);
+      for (const tr of u.transactions) {
+        for (const e of tr.effects) {
+          if (e.is(learnEffect)) {
+            speller?.learn(e.value);
+            u.state.facet(noticeFacet)?.(learnedNotice(e.value));
+          } else if (e.is(unlearnEffect) && speller) {
+            this.unlearning++;
+            speller
+              .unlearn(e.value)
+              .catch((err) => console.warn("Unlearning a word failed:", err))
+              .finally(() => {
+                this.unlearning--;
+                this.schedule(0);
+              });
+          }
+        }
+      }
       if (u.docChanged || layersOf(u.startState) !== layersOf(u.state)) {
         this.edited = true;
         this.schedule(PAUSE);
@@ -214,7 +263,7 @@ const checker = ViewPlugin.fromClass(
     }
 
     check() {
-      if (!this.view.state.facet(spellerFacet) || this.gone) return;
+      if (!this.view.state.facet(spellerFacet) || this.gone || this.unlearning) return;
       // Marks for text the checker has answered already, as after an undo, come from its answers.
       if (this.edited) this.view.dispatch(spellingChecked([]));
       this.edited = false;
@@ -254,5 +303,9 @@ const checker = ViewPlugin.fromClass(
   },
 );
 
-/** Spelling marks. With a speller, the page is checked as you write. */
-export const spelling = (speller?: Speller) => [spellingField, speller ? [spellerFacet.of(speller), checker] : []];
+/** Spelling marks. With a speller, the page is checked as you write. `notice` shows a line in the bar under the page. */
+export const spelling = (speller?: Speller, notice?: Notice) => [
+  spellingField,
+  speller ? [spellerFacet.of(speller), checker] : [],
+  notice ? noticeFacet.of(notice) : [],
+];

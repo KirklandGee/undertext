@@ -38,6 +38,18 @@ pub fn learn_spelling(word: String) {
     learn(&word);
 }
 
+/// Whether the word is in the Mac's own word list. "teh" learned covers "Teh".
+#[tauri::command]
+pub fn learned_spelling(word: String) -> bool {
+    has_learned(&word)
+}
+
+/// Takes a word out of the Mac's own word list. "Teh" takes out "teh".
+#[tauri::command]
+pub fn unlearn_spelling(word: String) {
+    unlearn(&word);
+}
+
 // AppKit's text checking may run off the main thread, so a long page never blocks the window.
 #[cfg(target_os = "macos")]
 mod mac {
@@ -157,10 +169,18 @@ mod mac {
     pub fn learn(word: &str) {
         checker().learnWord(&NSString::from_str(word));
     }
+
+    pub fn has_learned(word: &str) -> bool {
+        checker().hasLearnedWord(&NSString::from_str(word))
+    }
+
+    pub fn unlearn(word: &str) {
+        checker().unlearnWord(&NSString::from_str(word));
+    }
 }
 
 #[cfg(target_os = "macos")]
-use mac::{check, guesses, language_of, learn};
+use mac::{check, guesses, has_learned, language_of, learn, unlearn};
 
 // Undertext is built for macOS. Elsewhere, nothing is marked.
 #[cfg(not(target_os = "macos"))]
@@ -180,6 +200,12 @@ fn guesses(_word: &str, _language: Option<&str>) -> Vec<String> {
 }
 #[cfg(not(target_os = "macos"))]
 fn learn(_word: &str) {}
+#[cfg(not(target_os = "macos"))]
+fn has_learned(_word: &str) -> bool {
+    false
+}
+#[cfg(not(target_os = "macos"))]
+fn unlearn(_word: &str) {}
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
@@ -296,19 +322,34 @@ mod tests {
         assert!(guess("amgio", "es").contains(&"amigo".to_string()));
     }
 
+    /// Forgets a test's word even if an assertion fails, so the Mac's word list stays as it was.
+    struct Forget(&'static str);
+    impl Drop for Forget {
+        fn drop(&mut self) {
+            NSSpellChecker::sharedSpellChecker().unlearnWord(&NSString::from_str(self.0));
+        }
+    }
+
     #[test]
     fn a_learned_word_is_no_longer_misspelled() {
         let word = "Undertextish";
-        // Forget it again even if an assertion fails, so the Mac's word list stays as it was.
-        struct Forget(&'static str);
-        impl Drop for Forget {
-            fn drop(&mut self) {
-                NSSpellChecker::sharedSpellChecker().unlearnWord(&NSString::from_str(self.0));
-            }
-        }
         let _forget = Forget(word);
         assert_eq!(words("An Undertextish page."), vec![(3, 15)]);
         learn_spelling(word.to_string());
         assert_eq!(words("An Undertextish page."), vec![]);
+    }
+
+    #[test]
+    fn finds_a_learned_word_in_either_case_and_unlearns_it() {
+        let word = "zorbletish";
+        let _forget = Forget(word);
+        assert!(!learned_spelling("Zorbletish".into()));
+        learn_spelling(word.into());
+        assert!(learned_spelling("Zorbletish".into()));
+        assert_eq!(words("A Zorbletish page."), vec![]);
+        // From the page's capitalized form, as a right click finds it.
+        unlearn_spelling("Zorbletish".into());
+        assert!(!learned_spelling("zorbletish".into()));
+        assert_eq!(words("A Zorbletish page."), vec![(2, 12)]);
     }
 }

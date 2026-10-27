@@ -7,6 +7,8 @@ const macSpeller: Speller = {
   check: (texts, sample) => invoke<Checked[]>("check_spelling", { texts, sample }),
   guesses: (word, language) => invoke<string[]>("spelling_guesses", { word, language }),
   learn: (word) => void invoke("learn_spelling", { word }).catch((err) => console.warn("Learning a word failed:", err)),
+  learned: (word) => invoke<boolean>("learned_spelling", { word }),
+  unlearn: (word) => invoke("unlearn_spelling", { word }),
 };
 
 // In a plain browser during development, a few common typos stand in for the Mac's checker.
@@ -35,6 +37,8 @@ const browserSpeller: Speller = {
     return word[0] === word[0].toUpperCase() ? guesses.map((g) => g[0].toUpperCase() + g.slice(1)) : guesses;
   },
   learn: (word) => void learned.add(word.toLowerCase()),
+  learned: async (word) => learned.has(word.toLowerCase()),
+  unlearn: async (word) => void learned.delete(word.toLowerCase()),
 };
 
 export const speller: Speller = isTauri ? macSpeller : browserSpeller;

@@ -13,6 +13,7 @@ import {
   spellingBlocks,
   spellingChecked,
   spellingField,
+  unlearnSpelling,
 } from "./spelling";
 
 const stateFor = (md: string) => {
@@ -127,6 +128,20 @@ describe("spelling", () => {
     expect(marked(state)).toEqual([["Wrod", 21, 25]]);
     state = apply(state, spellingChecked([answer(page, [[0, 3], [12, 15], [21, 25]])]));
     expect(marked(state)).toEqual([["Wrod", 21, 25]]);
+  });
+
+  it("unlearning a word forgets the answers that had it, and marks it at the next answer", () => {
+    let state = stateFor("Teh cat.\n\nA dog.\n");
+    state = apply(state, spellingChecked([answer("Teh cat.", [[0, 3]]), answer("A dog.", [])]));
+    state = apply(state, learnSpelling("teh"));
+    expect(marked(state)).toEqual([]);
+    // From the page's capitalized form, as a right click finds it.
+    state = apply(state, unlearnSpelling("Teh"));
+    // The checker gets asked again about the paragraph with the word, even one learned in another app.
+    expect([...state.field(spellingField).cache.keys()]).toEqual(["A dog."]);
+    expect(marked(state)).toEqual([]);
+    state = apply(state, spellingChecked([answer("Teh cat.", [[0, 3]])]));
+    expect(marked(state)).toEqual([["Teh", 0, 3]]);
   });
 
   it("keeps the checker's guesses for a word", () => {

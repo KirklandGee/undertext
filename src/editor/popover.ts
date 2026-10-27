@@ -326,7 +326,7 @@ const HINTS: Record<PopoverAction["kind"], string> = {
   revive: "Brings it back to full strength, and into the word count.",
   rewrite: "Suggests rewrites of the sentence. ↑↓ picks one.",
   spell: "Puts it in place of the word. ⌘Z brings the word back.",
-  learn: "Adds the word to your Mac's dictionary, for every app.",
+  learn: "Adds the word to your Mac's dictionary, for every app. Right-click it to unlearn it.",
 };
 
 /** What a button does, for its tooltip. A writing issue's fix replaces a mistake, so it keeps no alternative. */

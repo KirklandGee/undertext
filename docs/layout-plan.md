@@ -319,6 +319,14 @@ show while writing too.
   isn't offered.
 - **Learn spelling** adds the word to the Mac's dictionary, shared with every app, and unmarks it in
   any case. ⌥↩ never learns, so a key pressed before the guesses come can't teach the Mac a typo.
+  The names are Apple's, from TextEdit and Mail; "Add to dictionary" was the other choice.
+- **Unlearn spelling.** ⌘Z can't undo learning, as the word list lives outside the page, so the bar
+  under the page says how to undo it. A learned word has no mark to click, so the way back is the
+  right-click menu: on any word in the Mac's list, also one learned in another app, it starts with
+  "Unlearn spelling". The Mac matches "Teh" to a learned "teh" both ways. The page then asks the
+  checker again about each paragraph with the word.
+- **No list of exceptions per article.** The owner chose the Mac's shared list only. Such a list
+  would have to live in the file to travel with it, a file-format change.
 - **The popover** opens on a misspelled word with Review closed, before any Review mark around it.
   Review's panel and palette entries leave spelling out. Right-click lists up to five guesses and
   "Learn spelling" above the usual items; the popover shows four.

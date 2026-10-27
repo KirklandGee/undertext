@@ -138,7 +138,7 @@ export function createEditorState(
       layers(initial),
       lab,
       highlights(checks),
-      spelling(speller),
+      spelling(speller, (message) => handlers?.().notice(message)),
       popover(handlers && ((target) => handlers().rewrite(target))),
       livePreview,
       inkLayers,

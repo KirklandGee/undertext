@@ -143,7 +143,8 @@ and ghosted text aren't checked.
 
 Click a misspelled word, or right-click it, for suggestions. A suggestion takes the word's place,
 and ⌘Z brings it back. ⌥↩ uses the first one. "Learn spelling" adds the word to your Mac's
-dictionary, which every app shares.
+dictionary, which every app shares. ⌘Z can't undo that: right-click the word and choose "Unlearn
+spelling". It shows on any word in your Mac's dictionary, also one learned in another app.
 
 ## AI and Review
 
@@ -214,8 +215,7 @@ limits. If `claude` isn't in `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local
   "Keep as ghosts" leave that text as it is and say why. Ghost the whole alternative instead.
 - Tables, images, and HTML show as Markdown source, not rendered.
 - Spelling covers the page, not Overflow. It needs macOS: in a plain browser (`pnpm dev`), a few
-  common typos stand in for it. To forget a learned word, right-click it in TextEdit and choose
-  "Unlearn Spelling".
+  common typos stand in for it.
 
 ## Development
 

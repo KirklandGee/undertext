@@ -89,6 +89,8 @@ pub fn run() {
             spelling::check_spelling,
             spelling::spelling_guesses,
             spelling::learn_spelling,
+            spelling::learned_spelling,
+            spelling::unlearn_spelling,
             ai::ai_key_status,
             ai::ai_set_key,
             ai::ai_clear_key,

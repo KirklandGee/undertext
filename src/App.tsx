@@ -65,7 +65,15 @@ import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layer
 import { Kind } from "./editor/readability";
 import { jumpToMark, RewriteTarget, runFirstAction, useFixAt } from "./editor/popover";
 import { createEditorState, describe, EditorHandlers, EditorInfo, pageMarkdown } from "./editor/setup";
-import { fixSpelling, guessesFor, learnSpelling, loadGuesses, misspellingAt } from "./editor/spelling";
+import {
+  fixSpelling,
+  guessesFor,
+  learnedWordAt,
+  learnSpelling,
+  loadGuesses,
+  misspellingAt,
+  unlearnSpelling,
+} from "./editor/spelling";
 import {
   askReloadChanged,
   ChangedOnDisk,
@@ -623,7 +631,8 @@ export default function App() {
   // -------------------------------------------------------------------------
   // Context menu
 
-  const buildMenu = (at: number | null, x: number, y: number): MenuState | null => {
+  /** `learned` is the word at `at` when it's in the Mac's own word list. */
+  const buildMenu = (at: number | null, x: number, y: number, learned: string | null): MenuState | null => {
     const v = view();
     const { state } = v;
     const sel = state.selection.main;
@@ -638,6 +647,8 @@ export default function App() {
         items.push({ label: guess, run: () => dispatch(fixSpelling(v.state, misspelled, guess)) });
       }
       items.push({ label: "Learn spelling", run: () => dispatch(learnSpelling(misspelled.word)) });
+    } else if (learned && !hasSelection) {
+      items.push({ label: "Unlearn spelling", run: () => dispatch(unlearnSpelling(learned)) });
     }
     const spellingItems = items.length;
 
@@ -715,7 +726,8 @@ export default function App() {
     window.setTimeout(async () => {
       const word = at === null ? null : misspellingAt(v.state, at);
       if (word) await loadGuesses(v, word).catch((err) => console.warn("Spelling guesses failed:", err));
-      setMenu(buildMenu(at, x, y));
+      const learned = at === null || word ? null : await learnedWordAt(v, at).catch(() => null);
+      setMenu(buildMenu(at, x, y, learned));
     }, 0);
   };
 
