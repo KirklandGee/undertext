@@ -90,24 +90,32 @@ const VOICE =
 // ---------------------------------------------------------------------------
 // 1. Alternatives for a word or sentence
 
-export async function suggestAlternatives(state: EditorState, altId: string): Promise<string[]> {
+/** What Claude is asked for other ways to say the alternative `altId`: the paragraph with it marked, and the options it has. */
+export function alternativesPrompt(state: EditorState, altId: string): { system: string; prompt: string } | null {
   const r = findAlt(state, altId);
   const block = r ? blockAt(state, r.from) : null;
-  if (!r || !block) return [];
+  if (!r || !block) return null;
   const para = state.doc.sliceString(block.from, block.to);
   const a = r.from - block.from;
   const b = r.to - block.from;
   const marked = `${para.slice(0, a)}⟦${para.slice(a, b)}⟧${para.slice(b)}`;
   const existing = syncedVariants(state, r);
+  return {
+    system:
+      "You suggest other ways to say one part of a writer's sentence. The part is marked with ⟦ ⟧. " +
+      "Each suggestion must drop in place of the marked text without changing anything around it: " +
+      "same grammatical role and form (number, tense, article agreement aside), fitting the meaning and tone. " +
+      "Mix close synonyms with a few that shift the nuance. Don't repeat options the writer already has.",
+    prompt: `Paragraph:\n${marked}\n\nOptions the writer already has: ${existing.map((v) => `"${v}"`).join(", ")}\n\nSuggest 6 alternatives for the marked text.`,
+  };
+}
 
+export async function suggestAlternatives(state: EditorState, altId: string): Promise<string[]> {
+  const ask = alternativesPrompt(state, altId);
+  if (!ask) return [];
   const answer = await callClaude<{ alternatives: string[] }>(
     {
-      system:
-        "You suggest other ways to say one part of a writer's sentence. The part is marked with ⟦ ⟧. " +
-        "Each suggestion must drop in place of the marked text without changing anything around it: " +
-        "same grammatical role and form (number, tense, article agreement aside), fitting the meaning and tone. " +
-        "Mix close synonyms with a few that shift the nuance. Don't repeat options the writer already has.",
-      prompt: `Paragraph:\n${marked}\n\nOptions the writer already has: ${existing.map((v) => `"${v}"`).join(", ")}\n\nSuggest 6 alternatives for the marked text.`,
+      ...ask,
       schema: object({ alternatives: list(str) }),
       effort: "low",
       maxTokens: 8000,
