@@ -23,7 +23,7 @@ import { inkLayers } from "./ink";
 import { backspace, enter, setHeading, toggleBold, toggleCode, toggleItalic, toggleLink, toggleList } from "./keys";
 import { jumpToLabSpan, keepCut, lab, labSpanAt, labSpans, labState } from "./lab";
 import { layers, layersField, layersOf } from "./layers";
-import { actionsFor, popover, popoverAt, RewriteTarget } from "./popover";
+import { actionHint, actionsFor, popover, popoverAt, RewriteTarget } from "./popover";
 import { livePreview } from "./preview";
 import { Kind, KINDS } from "./readability";
 
@@ -196,7 +196,7 @@ export interface EditorInfo {
   } | null;
   /**
    * The live checks, and Claude's writing issues once it has looked (`ran`). While Review is open,
-   * `here` says why the text at the caret is marked, and `fix` is a writing issue's suggestion.
+   * `here` says why the text at the caret is marked, and `fix` is its suggestion or correction.
    */
   checks: {
     grade: number | null;
@@ -207,6 +207,8 @@ export interface EditorInfo {
     ran: boolean;
     here: string | null;
     fix: string | null;
+    /** What using `fix` does: it replaces a mistake, or becomes an alternative. */
+    fixHint: string | null;
     /** The first action at the caret when it isn't a fix, such as "Ghost it" or "Suggest rewrites". ⌥↩ runs it. */
     action: string | null;
   } | null;
@@ -272,6 +274,7 @@ export function describe(state: EditorState): EditorInfo {
       ran: writing !== null,
       here: at?.note ?? null,
       fix,
+      fixHint: at && first?.kind === "fix" ? actionHint(at, first) : null,
       action: first && first.kind !== "fix" ? first.label : null,
     };
   }

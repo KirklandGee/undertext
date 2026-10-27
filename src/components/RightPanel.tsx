@@ -18,7 +18,7 @@ interface Props {
   onJump(kinds: readonly Kind[]): void;
   /** Asks Claude for writing issues. */
   onFindIssues(): void;
-  /** Uses the fix of the writing issue at the caret. */
+  /** Uses the fix of the mark at the caret. */
   onUseFix(): void;
   onTab(tab: RightTab): void;
   onOverflow(text: string): void;
@@ -173,7 +173,7 @@ function Readability({ checks, words, hidden, onToggle, onJump, onUseFix }: Prop
         <p className="hl-here" aria-live="polite">
           {checks.here ?? "Click a highlight to see why it's marked."}
           {checks.fix && (
-            <button className="hl-fix" onClick={onUseFix} title="Adds the fix as an alternative. ⌥K brings back your text.">
+            <button className="hl-fix" onClick={onUseFix} title={checks.fixHint ?? undefined}>
               Use “{checks.fix}”
             </button>
           )}

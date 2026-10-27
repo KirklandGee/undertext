@@ -331,7 +331,7 @@ export function wordsIn(state: EditorState, spans: LabSpan[]): number {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Writing issues: grammar and style, marked pink in Review, each with a fix
+// 5. Writing issues: grammar, spelling, and wrong words, marked pink in Review, each with a fix
 
 export interface WritingAnswer {
   paragraph: number;

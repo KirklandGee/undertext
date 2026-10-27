@@ -431,7 +431,7 @@ export default function App() {
       flash(n ? `${n} writing ${n === 1 ? "issue" : "issues"} marked in pink` : "No writing issues found");
     });
 
-  /** The writing issue at the caret becomes an alternative with its fix active. */
+  /** Uses the fix of the mark at the caret: a mistake is replaced, a suggestion becomes an alternative. */
   const useFix = () => {
     const state = view().state;
     const spec = useFixAt(state);

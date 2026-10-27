@@ -167,8 +167,8 @@ you can see and undo.
   While they load, the panel shows where they will land, and Esc cancels.
 - **Find writing issues:** Claude marks grammar, spelling, and wrong words in pink, each with a
   reason and a fix. Review opens to show them. Click one and use its button, or put the caret on it
-  and press ⌥↩: the fix becomes an alternative, and ⌥K restores your text. A mark goes away when
-  you edit its text.
+  and press ⌥↩: the fix replaces the mistake, and ⌘Z brings it back. A mark goes away when you
+  edit its text.
   Code is left alone.
 - **Fix punctuation and typos:** each fix becomes an alternative with the fix active. ⌥K restores
   your text.

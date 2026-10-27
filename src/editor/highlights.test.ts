@@ -194,15 +194,21 @@ describe("writing issues from Claude", () => {
     let state = stateFor(TEXT, true).update(setWritingIssues(issues)).state;
     state = state.update({ selection: EditorSelection.cursor(22) }).state;
     expect(issueAt(state, 22)).toMatchObject({ kind: "grammar", fix: "you" });
-    expect(describeEditor(state).checks).toMatchObject({ here: "Use “you” here.", fix: "you" });
+    expect(describeEditor(state).checks).toMatchObject({
+      here: "Use “you” here.",
+      fix: "you",
+      fixHint: "Replaces it. ⌘Z brings it back.",
+    });
   });
 
-  it("use a fix as an alternative that keeps the original, and undo it", () => {
+  // A writing issue is a mistake, not a style choice, so its fix replaces the words.
+  it("replace the words with a fix, with no alternative, and undo it", () => {
     let state = stateFor(TEXT, true).update(setWritingIssues(issues)).state;
     const spec = applyFix(state, issues[0]);
     state = state.update(spec!).state;
     expect(state.doc.toString()).toBe("Long walks can help you relax and do it.");
-    expect(pageMarkdown(state, "")).toBe("Long walks can help {{yourself|>~you}} relax and do it.\n");
+    expect(layersOf(state).alts).toEqual([]);
+    expect(pageMarkdown(state, "")).toBe("Long walks can help you relax and do it.\n");
     expect(drawn(state).filter(([c]) => c === "hl hl-grammar")).toEqual([["hl hl-grammar", "do"]]);
 
     const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
@@ -210,16 +216,31 @@ describe("writing issues from Claude", () => {
     expect(state.doc.toString()).toBe(TEXT.trimEnd());
     expect(pageMarkdown(state, "")).toBe(TEXT);
     step(redo);
-    expect(pageMarkdown(state, "")).toBe("Long walks can help {{yourself|>~you}} relax and do it.\n");
+    expect(pageMarkdown(state, "")).toBe("Long walks can help you relax and do it.\n");
   });
 
-  it("keep a fix's spaces through a save", () => {
+  it("keep the layers after a longer fix where they are, through undo and redo", () => {
+    const issue: WritingIssue = { from: 0, to: 3, kind: "grammar", note: "Needs an apostrophe.", fix: "It's" };
+    let state = stateFor("Its {-really-} easy {{now|soon}}.\n", true);
+    expect(state.doc.toString()).toBe("Its really easy now.");
+    state = state.update(applyFix(state, issue)!).state;
+    expect(state.doc.toString()).toBe("It's really easy now.");
+    expect(pageMarkdown(state, "")).toBe("It's {-really-} easy {{now|soon}}.\n");
+
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    expect(pageMarkdown(state, "")).toBe("Its {-really-} easy {{now|soon}}.\n");
+    step(redo);
+    expect(pageMarkdown(state, "")).toBe("It's {-really-} easy {{now|soon}}.\n");
+  });
+
+  it("drop a doubled word and its space, and save the page as shown", () => {
     let state = stateFor("We saw the the cat.\n", true);
     const issue: WritingIssue = { from: 7, to: 15, kind: "grammar", note: "A word twice.", fix: "the " };
     state = state.update(applyFix(state, issue)!).state;
     expect(state.doc.toString()).toBe("We saw the cat.");
     const saved = pageMarkdown(state, "");
-    expect(saved).toBe("We saw {{the the|>~the}} cat.\n");
+    expect(saved).toBe("We saw the cat.\n");
     expect(parsePage(saved).text).toBe("We saw the cat.");
   });
 

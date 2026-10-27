@@ -87,7 +87,8 @@ export function jumpToMark(state: EditorState, kinds: readonly Kind[], dir: 1 | 
 
 export interface PopoverAction {
   /**
-   * "fix" uses the suggestion as an alternative, "ghost" dims the words, "remove" deletes them,
+   * "fix" uses the suggestion as an alternative, or Claude's fix in place of a mistake, "ghost"
+   * dims the words, "remove" deletes them,
    * "revive" brings a ghost back, and "rewrite" asks Claude.
    */
   kind: "fix" | "ghost" | "remove" | "revive" | "rewrite";
@@ -276,6 +277,11 @@ const HINTS: Record<PopoverAction["kind"], string> = {
   rewrite: "Suggests rewrites of the sentence. ↑↓ picks one.",
 };
 
+/** What a button does, for its tooltip. A writing issue's fix replaces a mistake, so it keeps no alternative. */
+export function actionHint(issue: Mark, action: PopoverAction): string {
+  return action.kind === "fix" && issue.kind === "grammar" ? "Replaces it. ⌘Z brings it back." : HINTS[action.kind];
+}
+
 /** Runs Claude's rewrite. The app gives it; tests leave it out. */
 type Rewrite = (target: RewriteTarget) => void;
 const rewriteFacet = Facet.define<Rewrite, Rewrite>({ combine: (all) => all[0] ?? (() => {}) });
@@ -321,7 +327,7 @@ function tooltipFor(open: Open): Tooltip {
           const button = row.appendChild(document.createElement("button"));
           button.className = `hl-pop-action hl-pop-${action.kind}`;
           button.textContent = action.label;
-          button.title = HINTS[action.kind];
+          button.title = actionHint(issue, action);
           // Keep the caret, and the popover, where they are until the action runs.
           button.addEventListener("mousedown", (e) => e.preventDefault());
           button.addEventListener("click", () => run(view, issue, action));

@@ -16,7 +16,7 @@ export interface HighlightSettings {
   hidden: readonly Kind[];
 }
 
-/** A grammar or style issue from Claude. `fix` replaces the text, or is empty when there is none. */
+/** A mistake Claude found: grammar, spelling, or a wrong word. `fix` replaces the text, or is empty when there is none. */
 export interface WritingIssue extends Issue {
   kind: "grammar";
   fix: string;
@@ -159,11 +159,12 @@ export function jumpToIssue(state: EditorState, kinds: readonly Kind[], dir: 1 |
 
 
 /**
- * Where a fix of `from`–`to` can go as an alternative. The file format trims each variant, so a
- * space at either edge would be lost on save: "the the " → "the " becomes "the the" → "the", and
- * "ended.Next" → "ended. Next" takes in the whole word. Null when the fix changes nothing, or would
- * leave its line, start a line with Markdown markup, cut into a ghost or an alternative, touch
- * code, or add or remove a backtick: each of those would save a different page.
+ * Where a fix of `from`–`to` can go. A suggestion's fix becomes an alternative, and the file format
+ * trims each variant, so a space at either edge would be lost on save: "the the " → "the " becomes
+ * "the the" → "the", and "ended.Next" → "ended. Next" takes in the whole word. Null when the fix
+ * changes nothing, or would leave its line, start a line with Markdown markup, cut into a ghost or
+ * an alternative, touch code, or add or remove a backtick: as an alternative, each of those would
+ * save a different page. A writing issue's fix, which replaces the words, keeps to the same rules.
  */
 export function fitFix(state: EditorState, from: number, to: number, fix: string): { from: number; to: number; fix: string } | null {
   const line = state.doc.lineAt(from);
@@ -203,8 +204,9 @@ export function fitFix(state: EditorState, from: number, to: number, fix: string
 }
 
 /**
- * Uses a mark's fix, Claude's or a suggestion, as an alternative with the fix active and the
- * original kept, as typo fixes do. Null when the mark has no fix, or the fix has no place (see fitFix).
+ * Uses a mark's fix. Claude's writing issue is a mistake, so its fix replaces the words. A
+ * suggestion is a style choice, so it becomes an alternative with the fix active and the original
+ * kept, as typo fixes do. Null when the mark has no fix, or the fix has no place (see fitFix).
  */
 export function applyFix(state: EditorState, issue: Issue): TransactionSpec | null {
   const fit = issue.fix ? fitFix(state, issue.from, issue.to, issue.fix) : null;
@@ -214,6 +216,7 @@ export function applyFix(state: EditorState, issue: Issue): TransactionSpec | nu
   // "An initial test" becomes "a first test", as switching an alternative's variant does.
   const article = articleFix(state, fit.from, fix);
   const changes = state.changes([...(article ? [article] : []), { from: fit.from, to: fit.to, insert: fix }]);
+  if (issue.kind === "grammar") return { changes };
   const mapped = mapLayers(layersOf(state), changes);
   const from = changes.mapPos(fit.from, -1);
   const alt: Alt = { from, to: from + fix.length, id: newId(), variants: [original, fix], active: 1, ai: [fix] };

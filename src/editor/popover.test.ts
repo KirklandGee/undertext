@@ -4,8 +4,9 @@ import { EditorView, keymap, showTooltip } from "@codemirror/view";
 import { createAlt } from "./commands";
 import { describe, expect, it } from "vitest";
 import { parsePage } from "./format";
-import { setHighlights, setWritingIssues, WritingIssue } from "./highlights";
+import { setHighlights, setWritingIssues, WritingIssue, writingIssues } from "./highlights";
 import {
+  actionHint,
   actionsFor,
   closePopover,
   firstAction,
@@ -129,7 +130,10 @@ describe("the popover at the edges", () => {
   it("uses the fix of the popover's mark from Review's button, wherever the caret is in it", () => {
     // The popover is on "walked slowly" at 4–17; the caret moves onto "slowly", an adverb too.
     const state = caret(click(stateFor("She walked slowly home.\n"), 6), 14);
-    expect(describeEditor(state).checks?.fix).toBe("strolled");
+    expect(describeEditor(state).checks).toMatchObject({
+      fix: "strolled",
+      fixHint: "Becomes an alternative. ⌥K brings your words back.",
+    });
     expect(state.update(useFixAt(state)!).state.doc.toString()).toBe("She strolled home.");
   });
 
@@ -217,6 +221,7 @@ describe("popover actions", () => {
     expect(state.doc.toString()).toBe("She strolled home.");
     expect(pageMarkdown(state, "")).toBe("She {{walked slowly|>~strolled}} home.\n");
     expect(undoRedo(state)).toEqual(["She walked slowly home.\n", "She {{walked slowly|>~strolled}} home.\n"]);
+    expect(actionHint(issue, { kind: "fix", label: "strolled" })).toBe("Becomes an alternative. ⌥K brings your words back.");
   });
 
   it("fix the article before a suggestion, and back again with the original", () => {
@@ -372,6 +377,23 @@ describe("popover actions", () => {
     const issue: WritingIssue = { from: 4, to: 7, kind: "grammar", note: "Spelling.", fix: "the" };
     const state = stateFor("Fix teh now.\n").update(setWritingIssues([issue])).state;
     expect(actionsFor(state, issue)).toEqual([{ kind: "fix", label: "the" }]);
+  });
+
+  it("replace a writing issue's words with its fix, and leave the next issue marked", () => {
+    // "Its" at 0–3, "loose" at 12–17.
+    const its: WritingIssue = { from: 0, to: 3, kind: "grammar", note: "Contraction of “it is” needs an apostrophe.", fix: "It's" };
+    const loose: WritingIssue = { from: 12, to: 17, kind: "grammar", note: "Wrong word: “lose” intended.", fix: "lose" };
+    let state = stateFor("Its easy to loose track.\n").update(setWritingIssues([its, loose])).state;
+    const issue = popoverAt(click(state, 1))!;
+    expect(issue).toMatchObject({ kind: "grammar", fix: "It's" });
+    const action = actionsFor(state, issue)[0];
+    expect(action).toEqual({ kind: "fix", label: "It's" });
+    expect(actionHint(issue, action)).toBe("Replaces it. ⌘Z brings it back.");
+    state = state.update(runAction(state, issue, action)!).state;
+    expect(state.doc.toString()).toBe("It's easy to loose track.");
+    expect(pageMarkdown(state, "")).toBe("It's easy to loose track.\n");
+    expect(writingIssues(state)).toEqual([{ ...loose, from: 13, to: 18 }]);
+    expect(undoRedo(state)).toEqual(["Its easy to loose track.\n", "It's easy to loose track.\n"]);
   });
 
   it("offer nothing that would save a different page", () => {

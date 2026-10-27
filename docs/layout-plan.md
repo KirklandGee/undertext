@@ -9,8 +9,9 @@ at the end.
 - Make room for what [Hemingway Editor](https://hemingwayapp.com) does: readability, highlighted
   issues, and AI rewrites.
 - Keep the page calm while writing. Analysis shows only when asked for.
-- Every AI result stays a layer: an alternative, a paragraph version, or a Lab mark or cut. Nothing
-  replaces the writer's text without a way back.
+- Every AI result stays a layer: an alternative, a paragraph version, or a Lab mark or cut. The
+  one exception is a writing issue's fix: it corrects a mistake in place, and undo brings the old
+  words back.
 
 Not in scope: an outline, a file list, more than one open document.
 
@@ -46,7 +47,7 @@ From its help pages, read on 2026-10-26.
 | Hard sentences, qualifiers        | Lab checks: long, convoluted, hedges and filler      |
 | Grammar and spelling              | "Fix punctuation and typos", as alternatives         |
 | Tone                              | Lab check "Off-tone words" marks words; no rewrite   |
-| Use suggestion (replaces text)    | Every result is an alternative; the original stays   |
+| Use suggestion (replaces text)    | A suggestion becomes an alternative; a mistake's fix replaces it |
 
 The gap is Hemingway's free half: **checks that run locally, as you type**, with no AI call. That
 is the grade, hard sentences, adverbs, passive voice, qualifiers, and simpler words. The rest is
@@ -185,11 +186,11 @@ keystroke in WebKit's engine. The checks run with Review closed too, for the gra
 **Writing issues** come from Claude, on request: "Find writing issues" in Review or ⌘K. Each has a
 reason and a fix. Claude quotes a snippet and its corrected form; the mark covers the words that
 change. The quotes are found on the page as it is when the answer comes, so typing meanwhile is
-safe. Code is skipped. Review opens to show the marks. "Use" makes the fix an alternative, with the
-original kept. A fix that adds or drops a space takes in the whole word, because a saved
-alternative can't start or end with a space. A fix isn't offered where its alternative would save
-a different page: in code, cutting into a ghost, or starting a line with Markdown markup. The
-same rules hold for typo fixes. A mark moves with edits, and goes away when its own text changes.
+safe. Code is skipped. Review opens to show the marks. "Use" replaces the words with the fix, and
+undo brings them back. A fix that adds or drops a space takes in the whole word, as typo fixes do.
+A fix isn't offered in code, over part of a ghost, over an alternative, or where it would start a
+line with Markdown markup. The same rules hold for typo fixes. A mark moves with edits, and goes
+away when its own text changes.
 
 The rules are for English.
 
@@ -277,7 +278,9 @@ Phases 4 and 5 don't need the checker, so either can come next.
 - The checks run with Review closed too, so the top bar shows the grade. Highlights still show
   only while Review is open.
 - Writing issues come from Claude on request, never as you type, so nothing is sent until you ask.
-  Each fix becomes an alternative, as typo fixes do.
+- A writing issue's fix replaces the words, with no alternative. Claude is asked to flag only
+  mistakes, not style, so the old words aren't worth keeping, and undo brings them back. Suggestions from the live checks
+  are style choices, so they still become alternatives. Typo fixes do too, for now.
 - Writing issues are pink. Green was taken by simpler words.
 - A writing issue goes away when its own text changes, not its whole paragraph. That way using one
   fix keeps the others in the paragraph.
