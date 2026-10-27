@@ -57,6 +57,29 @@ const ari = (letters: number, words: number, sentences: number) =>
   Math.max(0, Math.round(4.71 * (letters / words) + (0.5 * words) / sentences - 21.43));
 
 // ---------------------------------------------------------------------------
+// Dashes
+
+/** How the page writes its dashes: "word—word", "word — word", or "word – word". */
+export type DashStyle = "closed" | "spaced" | "spacedEn";
+
+/** A dash in each style. */
+export const DASHES: Record<DashStyle, string> = { closed: "—", spaced: " — ", spacedEn: " – " };
+
+/**
+ * The style the page uses most. A page with no dashes, or a tie, uses closed em dashes. Skipped text,
+ * written as U+FFFC, isn't a word beside a dash.
+ */
+export function dashStyle(page: string): DashStyle {
+  const count = (re: RegExp) => page.match(re)?.length ?? 0;
+  const closed = count(/[^\s\uFFFC]—[^\s\uFFFC]/g);
+  const spaced = count(/[ \t]—[ \t]/g);
+  const spacedEn = count(/[ \t]–[ \t]/g);
+  if (spaced > closed && spaced >= spacedEn) return "spaced";
+  if (spacedEn > closed && spacedEn > spaced) return "spacedEn";
+  return "closed";
+}
+
+// ---------------------------------------------------------------------------
 // Prose blocks
 
 /** Lines that hold no prose: headings, rules, tables, HTML, and link definitions. */

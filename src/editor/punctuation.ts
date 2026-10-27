@@ -3,13 +3,12 @@
 // -ly adverb, a bracket or quote with no partner, and a decade with an apostrophe. The rules are for
 // English. No editor code, so the tests run on plain strings.
 
-import { LY_WORDS, proseBlocks } from "./readability";
+import { DASHES, DashStyle, dashStyle, LY_WORDS, proseBlocks } from "./readability";
+
+export { dashStyle, type DashStyle };
 
 /** Text the rules skip, such as code or a ghost, stands in as this character, so no rule reads across it. */
 export const SKIPPED = "\uFFFC";
-
-/** How the page writes its dashes: "word—word", "word — word", or "word – word". */
-export type DashStyle = "closed" | "spaced" | "spacedEn";
 
 export interface Mistake {
   from: number;
@@ -20,19 +19,6 @@ export interface Mistake {
   fix?: string;
   /** An opening bracket or quote with no partner yet: the writer may be about to type it. */
   opens?: true;
-}
-
-const DASHES: Record<DashStyle, string> = { closed: "—", spaced: " — ", spacedEn: " – " };
-
-/** The style the page uses most. A page with no dashes, or a tie, uses closed em dashes. */
-export function dashStyle(page: string): DashStyle {
-  const count = (re: RegExp) => page.match(re)?.length ?? 0;
-  const closed = count(/[^\s\uFFFC]—[^\s\uFFFC]/g);
-  const spaced = count(/[ \t]—[ \t]/g);
-  const spacedEn = count(/[ \t]–[ \t]/g);
-  if (spaced > closed && spaced >= spacedEn) return "spaced";
-  if (spacedEn > closed && spacedEn > spaced) return "spacedEn";
-  return "closed";
 }
 
 const NAMES: Record<string, string> = {
