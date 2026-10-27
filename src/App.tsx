@@ -5,6 +5,7 @@ import { AltPanel, AltTab } from "./components/AltPanel";
 import { AiError, aiCancel, aiClearKey, aiKeyStatus, aiSetKey } from "./ai/client";
 import {
   addRewrites,
+  addSuggestions,
   CHECKS,
   CheckId,
   findWritingIssues,
@@ -35,7 +36,6 @@ import {
 } from "./components/panels";
 import { RightPanel } from "./components/RightPanel";
 import {
-  addAiAlternatives,
   addAltVariant,
   altAt,
   altInSelection,
@@ -405,7 +405,7 @@ export default function App() {
       async (live) => {
         const texts = await suggestAlternatives(view().state, id);
         if (!live()) return;
-        const spec = addAiAlternatives(view().state, id, texts);
+        const spec = addSuggestions(view().state, id, texts);
         if (spec) dispatch(spec);
         else flash("No new alternatives");
       },
@@ -591,7 +591,7 @@ export default function App() {
         if (!live()) return;
         const spec = addRewrites(view().state, made.id, kind, texts);
         if (spec) dispatch(spec);
-        // Each one either kept the issue or repeated a version the sentence has.
+        // Each one kept the issue, added a dash, or repeated a version the sentence has.
         else flash("No new rewrites that fix it. Try again.");
       },
       made.id,

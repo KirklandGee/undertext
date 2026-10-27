@@ -349,7 +349,8 @@ Six releases, in this order, each its own commit after a review.
    "Use all" is its own undo step, and uses only the marks Review shows. ⌘Z on any edit that drops
    writing issues, a fix or typing, brings those marks back, beside any newer ones.
 2. **No new dashes from Claude.** The prompts for other ways to say it and for rewrites say not to
-   add a dash. A suggestion with more dashes than the text it replaces is dropped.
+   add a dash. A suggestion with more dashes than the text it replaces is dropped. A dash here is
+   "—", "–" between words, "--", or a hyphen with a space on each side; "1990–1995" is a range.
 3. **Punctuation mistakes as you write.** Local rules, each with one right fix. Like spelling, they
    show with Review open or closed, as a dotted blue underline, and a click opens the popover. The
    fix replaces the text, and ⌘Z brings it back. The rules:
@@ -385,7 +386,7 @@ Six releases, in this order, each its own commit after a review.
 6. **Sharper writing issues.** The prompt names the punctuation mistakes the rules can't find:
    comma splices, "its" and "it's", a comma between subject and verb, and an aside that opens with
    a dash and closes with a comma. It leaves out words that aren't real words, which the spell
-   checker marks.
+   checker marks. A fix adds no dash: a comma splice gets a period or a semicolon.
 
 **The page's dash style** is closed em dashes ("word—word"), spaced em dashes ("word — word"), or
 spaced en dashes ("word – word"), whichever the page uses most. A page with no dashes uses closed

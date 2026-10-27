@@ -88,6 +88,23 @@ const VOICE =
   "Paragraphs are numbered like [3]. When you quote text, copy it exactly, character for character, from one paragraph.";
 
 // ---------------------------------------------------------------------------
+// Dashes: Claude adds them freely, and many readers now take a page full of them for AI writing.
+
+const NO_DASHES =
+  "Use no more dashes than the marked text has: no — or – between words, no --, and no hyphen with a space on each side.";
+
+/** Dashes as NO_DASHES names them: an en dash between numbers is a range, as in 1990–1995. */
+const DASH = /[—―⸺⸻]|--|(?<=\s)-(?=\s)|(?<!\d)–|–(?!\d)/g;
+const dashes = (text: string) => text.match(DASH)?.length ?? 0;
+
+/** Claude's texts that have no more dashes than the alternative's text on the page. */
+function noNewDashes(state: EditorState, altId: string, texts: string[]): string[] {
+  const r = findAlt(state, altId);
+  const most = r ? dashes(state.doc.sliceString(r.from, r.to)) : 0;
+  return texts.filter((t) => dashes(t) <= most);
+}
+
+// ---------------------------------------------------------------------------
 // 1. Alternatives for a word or sentence
 
 /** What Claude is asked for other ways to say the alternative `altId`: the paragraph with it marked, and the options it has. */
@@ -105,7 +122,7 @@ export function alternativesPrompt(state: EditorState, altId: string): { system:
       "You suggest other ways to say one part of a writer's sentence. The part is marked with ⟦ ⟧. " +
       "Each suggestion must drop in place of the marked text without changing anything around it: " +
       "same grammatical role and form (number, tense, article agreement aside), fitting the meaning and tone. " +
-      "Mix close synonyms with a few that shift the nuance. Don't repeat options the writer already has.",
+      `Mix close synonyms with a few that shift the nuance. Don't repeat options the writer already has. ${NO_DASHES}`,
     prompt: `Paragraph:\n${marked}\n\nOptions the writer already has: ${existing.map((v) => `"${v}"`).join(", ")}\n\nSuggest 6 alternatives for the marked text.`,
   };
 }
@@ -123,6 +140,11 @@ export async function suggestAlternatives(state: EditorState, altId: string): Pr
     () => ({ alternatives: ["option one", "option two", "option three"] }),
   );
   return answer.alternatives;
+}
+
+/** Adds Claude's other ways to say it to the alternative, leaving out those that add a dash. Null when none is left. */
+export function addSuggestions(state: EditorState, altId: string, texts: string[]): TransactionSpec | null {
+  return addAiAlternatives(state, altId, noNewDashes(state, altId, texts));
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +397,8 @@ export function rewritePrompt(state: EditorState, altId: string, kind: Kind, phr
     system:
       `${VOICE} Rewrite the part of the writer's paragraph marked with ⟦ ⟧. ${REWRITE_GOALS[kind] ?? ""}${flagged} ` +
       "Keep its meaning, facts, and tone, and add nothing new. Each rewrite replaces the marked text on its own, " +
-      "on one line. Make them differ from each other, and from the rewrites the writer has already.",
+      `on one line. Make them differ from each other, and from the rewrites the writer has already. ${NO_DASHES} ` +
+      "Use a comma, a colon, parentheses, or a period instead.",
     prompt:
       `Paragraph:\n${marked}\n\nRewrites the writer has already: ${others.length ? others.map((v) => `“${v}”`).join(", ") : "none"}.\n\n` +
       "Suggest 6 rewrites of the marked text.",
@@ -406,10 +429,11 @@ function stillHas(kind: Kind, text: string): boolean {
 
 /**
  * Adds Claude's rewrites to the alternative, keeping only those the live checks no longer mark the
- * same way: a rewrite of passive voice with passive voice left is dropped. Null when none is left.
+ * same way, and that add no dash: a rewrite of passive voice with passive voice left is dropped.
+ * Null when none is left.
  */
 export function addRewrites(state: EditorState, altId: string, kind: Kind, texts: string[]): TransactionSpec | null {
-  return addAiAlternatives(state, altId, texts.filter((t) => !stillHas(kind, t)));
+  return addAiAlternatives(state, altId, noNewDashes(state, altId, texts).filter((t) => !stillHas(kind, t)));
 }
 
 // ---------------------------------------------------------------------------

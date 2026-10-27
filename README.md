@@ -170,7 +170,8 @@ filler can be ghosted, so you read the sentence without it, or removed. A click 
 offers "Remove it" and "Revive it". Removing tidies the spaces, commas, and capital around the
 words, and ⌘Z brings them back. Passive voice, hard sentences, and
 hidden actions with no suggestion offer "Suggest rewrites": Claude rewrites the sentence to fix
-it, and the rewrites that the checks no longer mark join it as alternatives. Ask again for more.
+it. The rewrites that the checks no longer mark join it as alternatives. A rewrite with more dashes
+than your sentence is left out. Ask again for more.
 Only that button, ⌥↩ on such a mark, or its ⌘K entry sends the paragraph to Claude. ⌥↩ does the first action at
 the cursor, and ⌘K lists it too. Where none fits, say in code or inside an alternative, the popover
 says why. It closes when you type, move off the mark, or press Esc.
@@ -179,6 +180,8 @@ The AI features are optional. They never rewrite your text on their own: every r
 you can see and undo.
 
 - **Alternatives (⌘⇧G):** about 6 suggestions join the word's versions. Your current text stays.
+  Undertext asks Claude not to add dashes, and leaves out a suggestion with more dashes than your
+  text. A range such as 1990–1995 isn't a dash.
   While they load, the panel shows where they will land, and Esc cancels.
 - **Find writing issues:** Claude marks grammar, spelling, and wrong words in pink, each with a
   reason and a fix. Review opens to show them. Click one and use its button, or put the caret on it

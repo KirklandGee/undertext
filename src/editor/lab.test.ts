@@ -1,7 +1,7 @@
 import { redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
-import { addRewrites, longSentences, narrowChange, rewritePrompt, writingIssuesFrom } from "../ai/tasks";
+import { addRewrites, addSuggestions, alternativesPrompt, longSentences, narrowChange, rewritePrompt, writingIssuesFrom } from "../ai/tasks";
 import { matchScore, rank } from "../palette/match";
 import { buildCommands, GROUPS, PaletteCommand, PaletteContext } from "../palette/commands";
 import { createAlt, findAlt } from "./commands";
@@ -169,6 +169,64 @@ describe("AI results on the page", () => {
       "Paragraph:\n⟦The door was closed.⟧\n\nRewrites the writer has already: “Someone closed the door.”.\n\n" +
         "Suggest 6 rewrites of the marked text.",
     );
+  });
+
+  it("drops Claude's rewrites that add a dash", () => {
+    let state = stateFor("The door was quickly closed.\n");
+    const made = createAlt(state, 0, 28)!;
+    state = state.update(made.spec).state;
+    const rewrites = ["Someone closed the door — fast.", "Someone shut it -- fast.", "Someone shut it - fast.", "Someone closed the door."];
+    state = state.update(addRewrites(state, made.id, "passive", rewrites)!).state;
+    expect(findAlt(state, made.id)!.variants).toEqual(["The door was quickly closed.", "Someone closed the door."]);
+
+    // A sentence with dashes may keep as many, but no more.
+    state = stateFor("Her plan — bold as ever — was quickly dropped.\n");
+    const dashed = createAlt(state, 0, state.doc.length)!;
+    state = state.update(dashed.spec).state;
+    const more = ["She dropped her plan — bold as ever — fast.", "She dropped her plan, bold as ever.", "She — boldly — dropped — her plan."];
+    state = state.update(addRewrites(state, dashed.id, "passive", more)!).state;
+    expect(findAlt(state, dashed.id)!.variants).toEqual([
+      "Her plan — bold as ever — was quickly dropped.",
+      "She dropped her plan — bold as ever — fast.",
+      "She dropped her plan, bold as ever.",
+    ]);
+  });
+
+  it("drops Claude's other ways to say it that add a dash", () => {
+    let state = stateFor("A quick reply.\n");
+    const made = createAlt(state, 2, 7)!;
+    state = state.update(made.spec).state;
+    const texts = ["fast", "quick—very", "brisk", "swift – terse", "well-timed", "swift ― terse"];
+    state = state.update(addSuggestions(state, made.id, texts)!).state;
+    // A hyphen in a word isn't a dash.
+    expect(findAlt(state, made.id)!.variants).toEqual(["quick", "fast", "brisk", "well-timed"]);
+    const saved = "A {{quick|~fast|~brisk|~well-timed}} reply.\n";
+    expect(pageMarkdown(state, "")).toBe(saved);
+    const step = (cmd: typeof undo) => cmd({ state, dispatch: (tr: Transaction) => (state = tr.state) });
+    step(undo);
+    expect(pageMarkdown(state, "")).toBe("A quick reply.\n");
+    step(redo);
+    expect(pageMarkdown(state, "")).toBe(saved);
+    expect(addSuggestions(state, made.id, ["quick — now"])).toBeNull();
+
+    // A range isn't a dash.
+    state = stateFor("It ran from 1990 to 1995.\n");
+    const years = createAlt(state, 7, 24)!;
+    state = state.update(years.spec).state;
+    state = state.update(addSuggestions(state, years.id, ["from 1990–1995", "from 1990 – 1995"])!).state;
+    expect(findAlt(state, years.id)!.variants).toEqual(["from 1990 to 1995", "from 1990–1995"]);
+  });
+
+  it("asks Claude not to add dashes", () => {
+    let state = stateFor("A quick reply.\n");
+    const made = createAlt(state, 2, 7)!;
+    state = state.update(made.spec).state;
+    const rule = "Use no more dashes than the marked text has: no — or – between words, no --, and no hyphen with a space on each side.";
+    const alternatives = alternativesPrompt(state, made.id)!.system;
+    expect(alternatives).toContain(rule);
+    // An alternative drops in place, so it can't end the sentence.
+    expect(alternatives).not.toContain("a period");
+    expect(rewritePrompt(state, made.id, "passive", "quick")!.system).toContain(`${rule} Use a comma, a colon, parentheses, or a period instead.`);
   });
 
   it("finds long sentences without AI", () => {
