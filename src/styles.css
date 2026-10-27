@@ -19,6 +19,7 @@
   --hl-weak: rgba(90, 160, 245, 0.27);
   --hl-simpler: rgba(95, 200, 130, 0.22);
   --hl-grammar: rgba(225, 105, 215, 0.26);
+  --spelling: rgba(245, 95, 95, 0.85);
   --mono: "iA Writer Mono S", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
   --text-size: 15px;
   color-scheme: dark;
@@ -45,6 +46,7 @@
     --hl-weak: rgba(50, 130, 230, 0.2);
     --hl-simpler: rgba(40, 170, 90, 0.2);
     --hl-grammar: rgba(200, 50, 180, 0.17);
+    --spelling: rgba(215, 45, 45, 0.8);
     color-scheme: light;
   }
 }
@@ -678,6 +680,12 @@ button:focus-visible {
   background: var(--selection);
 }
 
+.menu .menu-divider {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 5px 5px;
+}
+
 .menu kbd {
   font: inherit;
   color: var(--faint);
@@ -884,6 +892,14 @@ button:focus-visible {
   background: var(--hl-simpler);
 }
 
+/* Misspelled words (src/editor/spelling.ts). They show while writing too, unlike Review's tints. */
+.sp {
+  text-decoration: underline wavy var(--spelling);
+  text-decoration-thickness: 1px;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 4px;
+}
+
 /* Claude's writing issues. Hemingway's green is taken by simpler words here. */
 .hl-grammar {
   background: var(--hl-grammar);
@@ -948,6 +964,10 @@ button:focus-visible {
 
 .hl-pop-grammar::before {
   background: var(--hl-grammar);
+}
+
+.hl-pop-spelling::before {
+  background: var(--spelling);
 }
 
 .hl-pop-ghost::before {

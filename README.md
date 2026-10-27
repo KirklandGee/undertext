@@ -12,6 +12,7 @@
 <p align="center">
   <a href="#build-and-run">Build and run</a> ·
   <a href="#shortcuts">Shortcuts</a> ·
+  <a href="#spelling">Spelling</a> ·
   <a href="#ai-and-review">AI and Review</a> ·
   <a href="https://github.com/klipstack/undertext/issues">Issues</a>
 </p>
@@ -34,6 +35,7 @@ other ways you might say them.
   press ⌥J and ⌥K, to read each one in place.
 - **Paragraph versions.** Fork a paragraph, rewrite it in place, and switch between the versions.
 - **Ghost.** Dim text you might cut. It stays readable but easy to ignore.
+- **Spelling.** Your Mac's spell checker underlines words it doesn't know, as you write.
 - **Review.** A side panel that grades the page and highlights hard sentences, weakeners, and
   simpler words as you type. Optional AI help finds writing issues, marks, fixes, and trims, but
   never rewrites your text on its own.
@@ -85,7 +87,7 @@ storage, and answers AI requests with fake results so you can try the UI.
 | ⌘⇧8 ⌘⇧7 ⌘⇧9 | Bulleted, numbered, or task list. The same list again removes it. |
 | ⌘-click | Open a link |
 | ⌘O, ⌘S, ⌘⇧S, ⌘N | Open, save, save as, new |
-| Right click | Context menu. Shift + right click shows the system menu with spelling fixes. |
+| Right click | Context menu. On a misspelled word, it starts with suggestions. Shift + right click shows the system menu. |
 
 - ⌥J, ⌥K, ⌥H, and ⌥L match the physical key, so they work on any keyboard layout. In Undertext they no
   longer type ∆ ˚ ˙ ¬. Dead keys such as ⌥E and ⌥N still work for accents and ñ.
@@ -130,6 +132,18 @@ Leftovers live after the marker.
   before a line that reads `:::alt` or `<!-- overflow -->`. Inside `{{ }}`, `\` escapes `| } > ~ \`.
 
 Older files wrote ghosts as `~~text~~`. Those now open as strikethrough.
+
+## Spelling
+
+Your Mac's spell checker underlines the words it doesn't know with a wavy red line, as you write.
+Review doesn't need to be open. A word you are still typing waits until you move on. Each paragraph
+is checked in its own language, from the ones set in System Settings → Keyboard → Text Input. A
+line too short to tell, such as "We teh", is checked in the page's language. Code, link addresses,
+and ghosted text aren't checked.
+
+Click a misspelled word, or right-click it, for suggestions. A suggestion takes the word's place,
+and ⌘Z brings it back. ⌥↩ uses the first one. "Learn spelling" adds the word to your Mac's
+dictionary, which every app shares.
 
 ## AI and Review
 
@@ -199,6 +213,9 @@ limits. If `claude` isn't in `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local
 - A ghost can't cover only part of an alternative: a save would lose it. ⌘/, Review's popover, and
   "Keep as ghosts" leave that text as it is and say why. Ghost the whole alternative instead.
 - Tables, images, and HTML show as Markdown source, not rendered.
+- Spelling covers the page, not Overflow. It needs macOS: in a plain browser (`pnpm dev`), a few
+  common typos stand in for it. To forget a learned word, right-click it in TextEdit and choose
+  "Unlearn Spelling".
 
 ## Development
 

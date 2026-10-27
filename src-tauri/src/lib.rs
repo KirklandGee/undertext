@@ -1,5 +1,6 @@
 mod ai;
 mod claude_code;
+mod spelling;
 
 use std::fs;
 use std::path::Path;
@@ -85,6 +86,9 @@ pub fn run() {
             read_text,
             write_text,
             open_url,
+            spelling::check_spelling,
+            spelling::spelling_guesses,
+            spelling::learn_spelling,
             ai::ai_key_status,
             ai::ai_set_key,
             ai::ai_clear_key,

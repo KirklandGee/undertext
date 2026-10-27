@@ -26,6 +26,7 @@ import { layers, layersField, layersOf } from "./layers";
 import { actionHint, actionsFor, popover, popoverAt, RewriteTarget } from "./popover";
 import { livePreview } from "./preview";
 import { Kind, KINDS } from "./readability";
+import { Speller, spelling } from "./spelling";
 
 export interface EditorHandlers {
   alternatives(): void;
@@ -117,6 +118,7 @@ export function createEditorState(
   initial: Layers,
   handlers?: () => EditorHandlers,
   checks?: HighlightSettings,
+  speller?: Speller,
 ): EditorState {
   const call = (fn: Exclude<keyof EditorHandlers, "rewrite" | "notice">) => () => {
     if (!handlers) return false;
@@ -129,12 +131,14 @@ export function createEditorState(
       drawSelection({ cursorBlinkRate: 1060 }),
       dropCursor(),
       EditorView.lineWrapping,
-      EditorView.contentAttributes.of({ spellcheck: "true" }),
+      // Spelling is ours (./spelling.ts): WebKit's would mark code and Markdown, under its own menu.
+      EditorView.contentAttributes.of({ spellcheck: "false" }),
       EditorView.editorAttributes.of({ class: "page-text" }),
       markdown({ extensions: MARKDOWN_EXTENSIONS, addKeymap: false, completeHTMLTags: false }),
       layers(initial),
       lab,
       highlights(checks),
+      spelling(speller),
       popover(handlers && ((target) => handlers().rewrite(target))),
       livePreview,
       inkLayers,
@@ -262,7 +266,9 @@ export function describe(state: EditorState): EditorInfo {
     const writing = writingIssues(state);
     for (const i of [...report.issues, ...(writing ?? [])]) counts[i.kind] += 1;
     // The popover's mark when it's open, so the panel, the palette, and ⌥↩ all mean the same one.
-    const at = popoverAt(state) ?? issueAt(state, state.selection.main.head);
+    // Spelling isn't one of Review's checks: its popover says all there is.
+    const open = popoverAt(state);
+    const at = open?.kind === "spelling" ? null : (open ?? issueAt(state, state.selection.main.head));
     const first = at && actionsFor(state, at)[0];
     // No fix to offer where it can't apply, such as over an alternative.
     const fix = first?.kind === "fix" ? first.label : null;

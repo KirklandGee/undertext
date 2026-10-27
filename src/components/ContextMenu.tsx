@@ -3,6 +3,8 @@ import { useEffect } from "react";
 export interface MenuItem {
   label: string;
   shortcut?: string;
+  /** A line above it, to start a group. */
+  divider?: boolean;
   run(): void;
 }
 
@@ -37,6 +39,7 @@ export function ContextMenu({ menu, onClose }: { menu: MenuState; onClose(): voi
         <button
           key={item.label}
           role="menuitem"
+          className={item.divider ? "menu-divider" : undefined}
           onClick={() => {
             onClose();
             item.run();

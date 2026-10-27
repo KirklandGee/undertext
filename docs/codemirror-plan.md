@@ -192,7 +192,8 @@ Total: about 3–4 weeks of focused work.
 - Showing syntax shifts text sideways, also under the mouse on a click. Obsidian has the same.
 - `insertNewlineContinueMarkup` may not match today's list tests (renumbering, spaces). Patch it or
   accept the difference, case by case.
-- Spellcheck underlines may flicker when decorations rebuild.
+- Spellcheck underlines may flicker when decorations rebuild. (Gone: WebKit's spelling is off, and
+  Undertext draws its own. See "Spelling" in `docs/layout-plan.md`.)
 
 ## Decisions taken
 

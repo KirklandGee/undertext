@@ -46,7 +46,7 @@ function markFor(issue: Issue): Decoration {
 }
 
 /** The page text with ghosts blanked out. Ghosted text doesn't count, as in the word count. */
-function pageText(state: EditorState): string {
+export function pageText(state: EditorState): string {
   let text = state.doc.toString();
   for (const g of layersOf(state).ghosts) {
     text = text.slice(0, g.from) + text.slice(g.from, g.to).replace(/[^\n]/g, " ") + text.slice(g.to);

@@ -72,11 +72,15 @@ const INLINE = /(`+)[\s\S]*?\1|!\[[^\]]*\]\([^)]*\)|\]\([^)]*\)|<[^>\n]*>|\bhttp
 
 const blank = (s: string) => s.replace(/[^\n]/g, " ");
 
+/** A heading line, and the marks around its text: "## Title ##". */
+const ATX = /^ {0,3}#{1,6}(?=\s|$)|[ \t]#+[ \t]*$/g;
+
 /**
- * Splits the page into paragraphs, list items, and quotes. Each block's text has the same length
- * as the page text it covers, with markup blanked out, so an offset in it is an offset in the page.
+ * Splits the page into paragraphs, list items, and quotes, and with `headings`, headings too. Each
+ * block's text has the same length as the page text it covers, with markup blanked out, so an
+ * offset in it is an offset in the page.
  */
-function proseBlocks(page: string): { from: number; text: string }[] {
+export function proseBlocks(page: string, { headings = false } = {}): { from: number; text: string }[] {
   const blocks: { from: number; text: string }[] = [];
   let start = -1;
   let lines: string[] = [];
@@ -107,8 +111,15 @@ function proseBlocks(page: string): { from: number; text: string }[] {
       continue;
     }
     if (start >= 0 && plain && SETEXT.test(line)) {
+      if (headings) flush();
       start = -1;
       lines = [];
+      continue;
+    }
+    if (headings && /^ {0,3}#{1,6}(?:\s|$)/.test(line)) {
+      flush();
+      blocks.push({ from: at, text: line.replace(ATX, blank).replace(INLINE, blank) });
+      if (edge) inList = false;
       continue;
     }
     if (!line.trim() || NOT_PROSE.test(line)) {

@@ -4648,6 +4648,9 @@ name = "undertext"
 version = "0.1.0"
 dependencies = [
  "keyring",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "reqwest",
  "serde",
  "serde_json",

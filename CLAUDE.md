@@ -65,14 +65,15 @@ the change, whether an agent or a review tool runs it.
   formatting, heading, and list commands. `ink.ts` draws underlines, gutter lines, and dots.
   `lab.ts` holds Review's temporary marks and cuts. `readability.ts` finds hard sentences,
   weakeners, and simpler words in plain text, and imports nothing. `highlights.ts` keeps them, and
-  Claude's writing issues, and draws them while Review is open. `popover.ts` explains the mark you
-  click and runs its fix. `clipboard.ts` keeps layers on copy and paste.
+  Claude's writing issues, and draws them while Review is open. `spelling.ts` asks the Mac's spell
+  checker (`src-tauri/src/spelling.rs`) about each changed paragraph after a pause, and keeps its
+  answers by paragraph text. `popover.ts` explains the mark you click and runs its fix. `clipboard.ts` keeps layers on copy and paste.
   `setup.ts` puts it together and builds the `EditorInfo` the React panels read.
 - `src/App.tsx` is the app shell. The left panel follows the caret (`src/components/AltPanel.tsx`).
   The right panel is about the whole page: Review and Overflow (`src/components/RightPanel.tsx`).
   `src/ai/tasks.ts` turns Claude's answers into page ranges.
 - `src-tauri/src/lib.rs`: file reads and writes (a save refuses to overwrite a change from another
-  app unless told to), and `open_url` for web and mail links.
+  app unless told to), and `open_url` for web and mail links. `spelling.rs` wraps NSSpellChecker.
 
 ## Tests
 

@@ -28,6 +28,11 @@ reqwest = { version = "0.13.5", default-features = false, features = ["json", "r
 keyring = { version = "4.2.0", default-features = false, features = ["apple-native-keyring-store", "v1"] }
 tokio = { version = "1", features = ["process", "time", "io-util", "macros", "sync"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSEnumerator", "NSOrthography", "NSRange", "NSString", "NSTextCheckingResult"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSSpellChecker"] }
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

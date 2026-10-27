@@ -12,6 +12,7 @@ import {
   firstAction,
   jumpToMark,
   openPopover,
+  PopoverAction,
   popoverAt,
   popoverContent,
   rewriteRange,
@@ -20,6 +21,7 @@ import {
   whyNoAction,
 } from "./popover";
 import { createEditorState, describe as describeEditor, EditorHandlers, pageMarkdown } from "./setup";
+import { misspellings, setGuesses, spellingChecked } from "./spelling";
 
 const stateFor = (md: string, on = true) => {
   const { text, alts, ghosts, versions } = parsePage(md);
@@ -414,5 +416,83 @@ describe("popover actions", () => {
     const passive = caret(stateFor("The door was closed.\n"), 12);
     expect(firstAction(passive)).toEqual({ rewrite: { from: 0, to: 20, kind: "passive", phrase: "was closed" } });
     expect(firstAction(caret(stateFor("Plain words here.\n"), 3))).toBeNull();
+  });
+});
+
+describe("the popover on a misspelled word", () => {
+  // "recieve" at 3–10.
+  const PAGE = "We recieve it.";
+  const marked = (on = false, md = `${PAGE}\n`, text = PAGE, words: [number, number][] = [[3, 10]]) =>
+    stateFor(md, on).update(spellingChecked([{ text, checked: { language: "en", words } }])).state;
+  const guessed = (state: EditorState, word = "recieve", guesses = ["receive", "relieve", "deceive", "reprieve", "recite"]) =>
+    state.update(setGuesses(word, guesses)).state;
+  const LEARN: PopoverAction = { kind: "learn", label: "Learn spelling" };
+
+  it("opens with Review closed, and offers the best guesses once they come, and Learn", () => {
+    let state = click(marked(), 5);
+    expect(shown(state)).toEqual(["spelling", "recieve"]);
+    expect(popoverContent(state, popoverAt(state)!)).toEqual({
+      title: "Spelling",
+      text: "Not in the dictionary. Finding suggestions…",
+      why: null,
+      actions: [LEARN],
+      hint: "esc closes",
+    });
+    const before = state.facet(showTooltip)[0];
+    state = guessed(state);
+    // The popover shows again, with the guesses.
+    expect(state.facet(showTooltip)[0]).not.toBe(before);
+    expect(popoverContent(state, popoverAt(state)!)).toEqual({
+      title: "Spelling",
+      text: "Not in the dictionary.",
+      why: null,
+      actions: [
+        { kind: "spell", label: "receive" },
+        { kind: "spell", label: "relieve" },
+        { kind: "spell", label: "deceive" },
+        { kind: "spell", label: "reprieve" },
+        LEARN,
+      ],
+      hint: "⌥↩ uses it · esc closes",
+    });
+    state = guessed(state, "recieve", []);
+    expect(popoverContent(state, popoverAt(state)!)).toMatchObject({ text: "Not in the dictionary. No suggestions.", actions: [LEARN] });
+  });
+
+  it("puts a guess in place of the word, ⌥↩ the best one, and undo brings the word back", () => {
+    const state = guessed(click(marked(), 5));
+    const picked = state.update(runAction(state, popoverAt(state)!, { kind: "spell", label: "relieve" })!).state;
+    expect(pageMarkdown(picked, "")).toBe("We relieve it.\n");
+    expect(popoverAt(picked)).toBeNull();
+    const best = state.update(firstAction(state)!.spec!).state;
+    expect(pageMarkdown(best, "")).toBe("We receive it.\n");
+    expect(undoRedo(best)).toEqual(["We recieve it.\n", "We receive it.\n"]);
+  });
+
+  it("never learns a word with ⌥↩, even before the guesses come", () => {
+    expect(firstAction(click(marked(), 5))).toBeNull();
+  });
+
+  it("learns the word: the mark and the popover go", () => {
+    let state = guessed(click(marked(), 5));
+    state = state.update(runAction(state, popoverAt(state)!, LEARN)!).state;
+    expect(misspellings(state)).toEqual([]);
+    expect(popoverAt(state)).toBeNull();
+    expect(pageMarkdown(state, "")).toBe("We recieve it.\n");
+  });
+
+  it("comes before a Review mark around the word, and stays out of Review's panel", () => {
+    const issue: WritingIssue = { from: 3, to: 13, kind: "grammar", note: "Wrong word.", fix: "get it" };
+    const state = click(marked(true).update(setWritingIssues([issue])).state, 5);
+    expect(shown(state)).toEqual(["spelling", "recieve"]);
+    expect(describeEditor(state).checks).toMatchObject({ here: null, fix: null, action: null });
+  });
+
+  it("offers no guess where an alternative cuts through the word, and says why", () => {
+    // The alternative is "big" or "larg"; "large" ends past it, at 2–7.
+    const state = guessed(click(marked(false, "A {{big|>larg}}e dog.\n", "A large dog.", [[2, 7]]), 3), "large", ["larger"]);
+    expect(shown(state)).toEqual(["spelling", "large"]);
+    expect(actionsFor(state, popoverAt(state)!)).toEqual([LEARN]);
+    expect(whyNoAction(state, popoverAt(state)!)).toBe("An alternative or a ghost cuts through it.");
   });
 });

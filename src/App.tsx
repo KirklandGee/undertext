@@ -65,6 +65,7 @@ import { emptyLayers, layersOf, setLayers as layersEffect } from "./editor/layer
 import { Kind } from "./editor/readability";
 import { jumpToMark, RewriteTarget, runFirstAction, useFixAt } from "./editor/popover";
 import { createEditorState, describe, EditorHandlers, EditorInfo, pageMarkdown } from "./editor/setup";
+import { fixSpelling, guessesFor, learnSpelling, loadGuesses, misspellingAt } from "./editor/spelling";
 import {
   askReloadChanged,
   ChangedOnDisk,
@@ -74,6 +75,7 @@ import {
   readDocument,
   saveDocument,
 } from "./lib/files";
+import { speller } from "./lib/spelling";
 import { buildCommands, PaletteCommand } from "./palette/commands";
 import { WELCOME } from "./welcome";
 
@@ -189,7 +191,7 @@ export default function App() {
     diskRef.current = disk === undefined ? (next.path ? md : null) : disk;
     const { text, alts, ghosts, versions, overflow: extra } = parsePage(md);
     const v = view();
-    v.setState(createEditorState(text, { alts, ghosts, versions }, () => handlersRef.current, highlightsRef.current));
+    v.setState(createEditorState(text, { alts, ghosts, versions }, () => handlersRef.current, highlightsRef.current, speller));
     overflowRef.current = extra;
     setOverflowState(extra);
     setFile(next);
@@ -628,6 +630,17 @@ export default function App() {
     const items: MenuItem[] = [];
     const hasSelection = !sel.empty && (at === null || (at >= sel.from && at <= sel.to));
 
+    // A misspelled word's guesses come first, as in other Mac apps.
+    const misspelled = !hasSelection && at !== null ? misspellingAt(state, at) : null;
+    if (misspelled) {
+      const fixable = fixSpelling(state, misspelled, misspelled.word) !== null;
+      for (const guess of fixable ? (guessesFor(state, misspelled.word) ?? []).slice(0, 5) : []) {
+        items.push({ label: guess, run: () => dispatch(fixSpelling(v.state, misspelled, guess)) });
+      }
+      items.push({ label: "Learn spelling", run: () => dispatch(learnSpelling(misspelled.word)) });
+    }
+    const spellingItems = items.length;
+
     if (hasSelection) {
       const ghosted = layersOf(state).ghosts.some((g) => g.from < sel.to && g.to > sel.from);
       items.push(
@@ -686,6 +699,7 @@ export default function App() {
       });
     }
     items.push({ label: "All commands…", shortcut: "⌘K", run: openPalette });
+    if (spellingItems) items[spellingItems].divider = true;
     return { x, y, items };
   };
 
@@ -696,8 +710,13 @@ export default function App() {
     const x = e.clientX;
     const y = e.clientY;
     const at = v.posAtCoords({ x, y });
-    // Let the editor see the selection change from the right click first.
-    window.setTimeout(() => setMenu(buildMenu(at, x, y)), 0);
+    // Let the editor see the selection change from the right click first. A misspelled word's
+    // guesses take a few milliseconds to come, the first time.
+    window.setTimeout(async () => {
+      const word = at === null ? null : misspellingAt(v.state, at);
+      if (word) await loadGuesses(v, word).catch((err) => console.warn("Spelling guesses failed:", err));
+      setMenu(buildMenu(at, x, y));
+    }, 0);
   };
 
   // -------------------------------------------------------------------------
@@ -706,7 +725,7 @@ export default function App() {
   useEffect(() => {
     const v = new EditorView({
       parent: mountRef.current!,
-      state: createEditorState("", emptyLayers, () => handlersRef.current, highlightsRef.current),
+      state: createEditorState("", emptyLayers, () => handlersRef.current, highlightsRef.current, speller),
       dispatchTransactions(trs, view) {
         view.update(trs);
         setInfo(describe(view.state));

@@ -296,6 +296,33 @@ Phases 4 and 5 don't need the checker, so either can come next.
   The first lists used broad patterns and marked about twice as much, much of it wrong, such as
   every "get".
 
+## Spelling
+
+Added 2026-10-27. Spelling isn't one of Review's checks: a typo isn't a style call, so its marks
+show while writing too.
+
+- **The Mac's checker, our marks.** Rust asks NSSpellChecker (`src-tauri/src/spelling.rs`); the
+  page draws a wavy red underline (`src/editor/spelling.ts`). WebKit's own spelling stays off: it
+  only checks words you edit, marks code and Markdown, puts its suggestions in a menu Undertext
+  replaces, and needs a macOS setting it doesn't have by default. A bundled word list would work off
+  the Mac, but with weaker suggestions and a word list of its own.
+- **When it checks.** On open, then each changed paragraph 400 ms after you stop typing. Answers
+  are kept by paragraph text, so an undo needs no new check. A word you are typing isn't marked
+  until the caret leaves it. A clean 18,000-word page checks in about 75 ms.
+- **Guesses come on demand.** Each costs about 4 ms, too slow to fetch for every mark. The caret
+  entering a word fetches its guesses, so a click or a right-click has them.
+- **Languages.** The checker finds each paragraph's language among the ones in System Settings. On
+  a line too short to tell, it accepts a word from any of them: "We teh" passes, as "teh" is
+  Indonesian. Such a line is checked in the page's language instead.
+- **A fix replaces the word**, with ⌘Z to undo. It isn't an alternative: the misspelling isn't a
+  version worth keeping. An alternative or ghost around the word keeps it. A fix that would cut one
+  isn't offered.
+- **Learn spelling** adds the word to the Mac's dictionary, shared with every app, and unmarks it in
+  any case. ⌥↩ never learns, so a key pressed before the guesses come can't teach the Mac a typo.
+- **The popover** opens on a misspelled word with Review closed, before any Review mark around it.
+  Review's panel and palette entries leave spelling out. Right-click lists up to five guesses and
+  "Learn spelling" above the usual items; the popover shows four.
+
 ## Open decisions
 
 1. **Which side.** macOS apps put the inspector on the right. Undertext has Alternatives on the
