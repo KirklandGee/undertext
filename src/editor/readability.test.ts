@@ -490,6 +490,36 @@ describe("what counts as prose", () => {
     expect(checkPage(text).issues[0].from).toBe(text.indexOf("really part"));
   });
 
+  it("skips HTML blocks and comments that run over several lines", () => {
+    const text = [
+      "<!--",
+      "really quickly in a comment",
+      "-->",
+      "",
+      "<div>",
+      "really quickly in a block",
+      "</div>",
+      "",
+      "<details>",
+      "<summary>A really quick summary</summary>",
+      "really quickly in the details",
+      "",
+      "<pre>",
+      "really quickly",
+      "",
+      "still really preformatted",
+      "</pre>",
+      "",
+      "Back to really plain prose.",
+      "",
+    ].join("\n");
+    expect(found(text)).toEqual([
+      ["intensifier", "really"],
+      ["adverb", "really"],
+    ]);
+    expect(checkPage(text).issues[0].from).toBe(text.indexOf("really plain"));
+  });
+
   it("keeps prose that only looks like code or an underlined heading", () => {
     const really = [
       ["intensifier", "really"],

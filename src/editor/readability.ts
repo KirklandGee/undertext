@@ -72,6 +72,26 @@ const INLINE = /(`+)[\s\S]*?\1|!\[[^\]]*\]\([^)]*\)|\]\([^)]*\)|<[^>\n]*>|\bhttp
 
 const blank = (s: string) => s.replace(/[^\n]/g, " ");
 
+/** Tags whose HTML block runs to a closing tag, even across blank lines. */
+const RAW_HTML = /^ {0,3}<(script|pre|style|textarea)(?=[\s>]|$)/i;
+/** Tags whose HTML block runs to a blank line, as CommonMark has them. */
+const BLOCK_HTML =
+  /^ {0,3}<\/?(?:address|article|aside|blockquote|body|caption|center|col|colgroup|dd|details|dialog|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|iframe|legend|li|main|menu|nav|ol|optgroup|option|p|search|section|summary|table|tbody|td|tfoot|th|thead|tr|ul)(?=[\s/>]|$)/i;
+/** Any other tag alone on its line. */
+const LONE_TAG = /^ {0,3}<\/?[a-z][\w-]*(?:\s[^>]*)?\/?>\s*$/i;
+
+/**
+ * Where the HTML block that `line` starts ends: at a line that matches, or "blank" at a blank line.
+ * Null when the line starts none, or ends it on the same line.
+ */
+function htmlBlock(line: string, inParagraph: boolean): RegExp | "blank" | null {
+  if (/^ {0,3}<!--/.test(line)) return line.includes("-->", line.indexOf("<!--") + 4) ? null : /-->/;
+  const raw = RAW_HTML.exec(line);
+  if (raw) return new RegExp(`</${raw[1]}>`, "i").test(line) ? null : new RegExp(`</${raw[1]}>`, "i");
+  if (BLOCK_HTML.test(line) || (!inParagraph && LONE_TAG.test(line))) return "blank";
+  return null;
+}
+
 /** A heading line, and the marks around its text: "## Title ##". */
 const ATX = /^ {0,3}#{1,6}(?=\s|$)|[ \t]#+[ \t]*$/g;
 
@@ -90,6 +110,7 @@ export function proseBlocks(page: string, { headings = false } = {}): { from: nu
     lines = [];
   };
   let fence: string | null = null;
+  let html: RegExp | "blank" | null = null;
   // A paragraph that a setext line can turn into a heading. In a list, an indented line is prose.
   let plain = false;
   let inList = false;
@@ -97,6 +118,10 @@ export function proseBlocks(page: string, { headings = false } = {}): { from: nu
   for (const line of page.split("\n")) {
     const at = pos;
     pos += line.length + 1;
+    if (html) {
+      if (html === "blank" ? !line.trim() : html.test(line)) html = null;
+      continue;
+    }
     const f = FENCE.exec(line);
     if (fence) {
       if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !line.slice(f[0].length).trim()) fence = null;
@@ -119,6 +144,12 @@ export function proseBlocks(page: string, { headings = false } = {}): { from: nu
     if (headings && /^ {0,3}#{1,6}(?:\s|$)/.test(line)) {
       flush();
       blocks.push({ from: at, text: line.replace(ATX, blank).replace(INLINE, blank) });
+      if (edge) inList = false;
+      continue;
+    }
+    html = htmlBlock(line, start >= 0);
+    if (html) {
+      flush();
       if (edge) inList = false;
       continue;
     }
