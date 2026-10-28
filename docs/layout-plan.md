@@ -412,7 +412,18 @@ Six releases, in this order, each its own commit after a review.
 6. **Sharper writing issues.** The prompt names the punctuation mistakes the rules can't find:
    comma splices, "its" and "it's", a comma between subject and verb, and an aside that opens with
    a dash and closes with a comma. It leaves out words that aren't real words, which the spell
-   checker marks. A fix adds no dash: a comma splice gets a period or a semicolon.
+   checker marks. A fix adds no dash: a comma splice gets a period or a semicolon, and an aside
+   closes the way it opens, or its dash becomes a comma. Undertext drops a fix that would leave its
+   line with more dashes than before. The shared preamble gets the space it lacked
+   ("formatting.Paragraphs").
+
+   Tried with the app's own Claude call, one run per prompt, on sample paragraphs written for it.
+   Every run found the comma splice, "its", the comma between subject and verb, and the aside, so
+   the gain is in the fixes, not in what is found. The old prompt's run had two fixes that added a
+   dash. The final prompt's run had none, left out "definately", and found "Note:this" and "said
+   ,then", which no local rule marks. It also marked three slips the local checks mark already, so
+   those can show a pink mark in Review beside the dotted one. An earlier draft told Claude to
+   leave such slips out, which would have left "Note:this" unmarked.
 
 **The page's dash style** is closed em dashes ("word—word"), spaced em dashes ("word — word"), or
 spaced en dashes ("word – word"), whichever the page uses most. A page with no dashes uses closed

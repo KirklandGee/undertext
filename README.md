@@ -217,7 +217,9 @@ you can see and undo.
   text. A range such as 1990–1995 isn't a dash.
   While they load, the panel shows where they will land, and Esc cancels.
 - **Find writing issues:** Claude marks grammar, spelling, and wrong words in pink, each with a
-  reason and a fix. Review opens to show them. Click one and use its button, or put the caret on it
+  reason and a fix. It looks hardest at the punctuation the local checks can't see: comma splices,
+  "its" and "it's", a comma between a subject and its verb, and an aside opened with a dash and
+  closed with a comma. Undertext leaves out a fix that adds a dash to its line. Review opens to show them. Click one and use its button, or put the caret on it
   and press ⌥↩: the fix replaces the mistake, and ⌘Z brings it back. "Use all" in Review uses
   every fix that fits at once, and one ⌘Z brings back your words and the marks. A mark goes away
   when you edit its text. A word the spell checker marks gets no pink mark when your Mac suggests

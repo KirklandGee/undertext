@@ -1,7 +1,16 @@
 import { redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
-import { addRewrites, addSuggestions, alternativesPrompt, longSentences, narrowChange, rewritePrompt, writingIssuesFrom } from "../ai/tasks";
+import {
+  addRewrites,
+  addSuggestions,
+  alternativesPrompt,
+  longSentences,
+  narrowChange,
+  rewritePrompt,
+  writingIssuesFrom,
+  writingIssuesPrompt,
+} from "../ai/tasks";
 import { matchScore, rank } from "../palette/match";
 import { buildCommands, GROUPS, PaletteCommand, PaletteContext } from "../palette/commands";
 import { createAlt, findAlt } from "./commands";
@@ -86,6 +95,45 @@ describe("AI results on the page", () => {
     expect(other).toEqual([{ from: 3, to: 10, kind: "grammar", note: "Past tense.", fix: "received" }, both[1]]);
     const wider = writingIssuesFrom(state, [{ paragraph: 1, find: "recieve teh", replace: "receive the", reason: "Two words." }]);
     expect(wider).toEqual([{ from: 3, to: 14, kind: "grammar", note: "Two words.", fix: "receive the" }]);
+  });
+
+  it("asks Claude for the punctuation rules can't find, and none they mark already", () => {
+    const system = writingIssuesPrompt(stateFor("I went home, I slept.\n"))!.system;
+    expect(system).toContain("intentional formatting. Paragraphs are numbered like [3].");
+    expect(system).toContain(
+      "In punctuation, look hardest for what simple rules can't find: a comma splice, “its” for “it’s” or the other way round, " +
+        "a comma between a subject and its verb, and an aside that opens with a dash and closes with a comma.",
+    );
+    expect(system).toContain(
+      "Leave out words that aren't words at all: the spell checker marks those. A fix adds no dash: give a comma " +
+        "splice a period or a semicolon, and close an aside the way it opens, or make its dash a comma.",
+    );
+    expect(writingIssuesPrompt(stateFor(""))).toBeNull();
+  });
+
+  it("leaves out a writing issue whose fix adds a dash", () => {
+    const state = stateFor("I went home, I slept. My brother — who lives in Ohio, came over.\n");
+    const issues = writingIssuesFrom(state, [
+      { paragraph: 1, find: "home, I slept", replace: "home—I slept", reason: "Comma splice." },
+      { paragraph: 1, find: "Ohio, came", replace: "Ohio — came", reason: "Dash, then comma." },
+      { paragraph: 1, find: "home, I slept", replace: "home; I slept", reason: "Comma splice." },
+      { paragraph: 1, find: "brother — who", replace: "brother, who", reason: "Dash, then comma." },
+    ]);
+    // "home," at 7–12, and "brother —" at 25–34.
+    expect(issues).toEqual([
+      { from: 7, to: 12, kind: "grammar", note: "Comma splice.", fix: "home;" },
+      { from: 25, to: 34, kind: "grammar", note: "Dash, then comma.", fix: "brother," },
+    ]);
+    // A dash at the start of the quote counts, and so do hyphens typed for one.
+    const more = writingIssuesFrom(state, [
+      { paragraph: 1, find: ", came over", replace: " — came over", reason: "Close the aside." },
+      { paragraph: 1, find: "home, I", replace: "home -- I", reason: "Comma splice." },
+    ]);
+    expect(more).toEqual([]);
+    // A fix may keep a dash that is there already.
+    const kept = writingIssuesFrom(state, [{ paragraph: 1, find: "brother — who lives", replace: "brother — who live", reason: "Agree." }]);
+    // "lives" at 39–44.
+    expect(kept).toEqual([{ from: 39, to: 44, kind: "grammar", note: "Agree.", fix: "live" }]);
   });
 
   it("finds Claude's quote with straight quotes on a page with curly ones", () => {

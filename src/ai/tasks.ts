@@ -90,7 +90,7 @@ const str = { type: "string" };
 const int = { type: "integer" };
 
 const VOICE =
-  "You help a writer edit their own draft. The draft is Markdown: #, **, *, ~~, - and > are intentional formatting." +
+  "You help a writer edit their own draft. The draft is Markdown: #, **, *, ~~, - and > are intentional formatting. " +
   "Paragraphs are numbered like [3]. When you quote text, copy it exactly, character for character, from one paragraph.";
 
 // ---------------------------------------------------------------------------
@@ -328,7 +328,11 @@ export function writingIssuesPrompt(state: EditorState): { system: string; promp
   return {
     system:
       `${VOICE} Find writing issues: grammar, spelling, punctuation, a wrong or missing word, a broken idiom, ` +
-      "a sentence fragment, or words that don't agree. Don't flag style choices that are correct, and don't " +
+      "a sentence fragment, or words that don't agree. In punctuation, look hardest for what simple rules can't " +
+      "find: a comma splice, “its” for “it’s” or the other way round, a comma between a subject and its verb, and " +
+      "an aside that opens with a dash and closes with a comma. Leave out words that aren't words at all: the spell " +
+      "checker marks those. A fix adds no dash: give a comma splice a period or a semicolon, and close an aside the " +
+      "way it opens, or make its dash a comma. Don't flag style choices that are correct, and don't " +
       "rewrite for taste. Don't flag headings. For each issue, quote a short snippet (a few words, unique within " +
       "its paragraph) as `find`, give the same snippet corrected as `replace`, and a reason in under 10 words. " +
       "Mark at most 30. Return an empty list if there are none.",
@@ -366,6 +370,12 @@ export function writingIssuesFrom(state: EditorState, answers: WritingAnswer[]):
     if (a.find === a.replace) continue;
     const found = locate(paras, a.paragraph, a.find, used);
     if (!found || isHeading(state, found.from) || ghostedEntirely(state, found) || touchesCode(state, found.from, found.to)) continue;
+    // A fix adds no dash, as alternatives and rewrites don't. Count the whole lines, so a dash at the
+    // quote's edge counts as it will on the page.
+    const lines = { from: state.doc.lineAt(found.from).from, to: state.doc.lineAt(found.to).to };
+    const now = state.doc.sliceString(lines.from, lines.to);
+    const then = now.slice(0, found.from - lines.from) + a.replace + now.slice(found.to - lines.from);
+    if (dashes(then) > dashes(now)) continue;
     used.push(found);
     const change = narrowChange(a.find, a.replace);
     const from = found.from + (change?.start ?? 0);
