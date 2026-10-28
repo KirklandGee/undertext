@@ -26,6 +26,7 @@ import { layers, layersField, layersOf } from "./layers";
 import { actionHint, actionsFor, markAtCaret, popover, popoverAt, RewriteTarget } from "./popover";
 import { livePreview } from "./preview";
 import { proofing } from "./proofing";
+import { smartTyping } from "./smart";
 import { Kind, KINDS } from "./readability";
 import { Speller, spelling } from "./spelling";
 
@@ -141,6 +142,7 @@ export function createEditorState(
       highlights(checks),
       spelling(speller, (message) => handlers?.().notice(message)),
       proofing(),
+      smartTyping,
       popover(handlers && ((target) => handlers().rewrite(target))),
       livePreview,
       inkLayers,

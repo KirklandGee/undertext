@@ -4,6 +4,7 @@ import { WritingIssue } from "../editor/highlights";
 import { LabSpan } from "../editor/lab";
 import { layersOf } from "../editor/layers";
 import { checkPage, dashesIn, hyphenDashes, Kind } from "../editor/readability";
+import { curlQuotes } from "../editor/smart";
 import { guessesFor, misspellings } from "../editor/spelling";
 import { callClaude } from "./client";
 
@@ -53,16 +54,21 @@ interface Range {
   to: number;
 }
 
+/** Curly quotes as straight ones, one character for one, so Claude's straight quotes match a page that curls them. */
+const straight = (text: string) => text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+
 /** Finds a quote in its paragraph (or, if Claude misnumbered it, in any paragraph). */
 function locate(paras: DocParagraph[], n: number, quote: string, used: Range[]): Range | null {
   if (!quote) return null;
   const order = [...paras.filter((p) => p.n === n), ...paras.filter((p) => p.n !== n)];
+  const find = straight(quote);
   for (const p of order) {
-    let i = p.text.indexOf(quote);
+    const text = straight(p.text);
+    let i = text.indexOf(find);
     while (i >= 0) {
       const range = { from: p.pos + i, to: p.pos + i + quote.length };
       if (!used.some((u) => u.from < range.to && u.to > range.from)) return range;
-      i = p.text.indexOf(quote, i + 1);
+      i = text.indexOf(find, i + 1);
     }
   }
   return null;
@@ -354,7 +360,9 @@ export function writingIssuesFrom(state: EditorState, answers: WritingAnswer[]):
     const change = narrowChange(a.find, a.replace);
     const from = found.from + (change?.start ?? 0);
     const to = change ? from + change.original.length : found.to;
-    const fix = change ? change.fixed : a.replace;
+    // On a page that curls its quotes, so does the fix.
+    const raw = change ? change.fixed : a.replace;
+    const fix = /[‘’“”]/.test(state.doc.sliceString(found.from, found.to)) ? curlQuotes(raw) : raw;
     // The spelling mark offers the same fix. Until the Mac's guesses come, Claude's may be the only one.
     if (misspellings(state).some((w) => w.from === from && w.to === to && guessesFor(state, w.word)?.includes(fix))) continue;
     issues.push({ from, to, kind: "grammar", note: a.reason, fix });

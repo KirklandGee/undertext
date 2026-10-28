@@ -394,11 +394,21 @@ Six releases, in this order, each its own commit after a review.
    an aside splits its pair, and two single dashes in one sentence read as a pair. A dash too many
    that runs across a line break offers no rewrite, as a hard sentence there doesn't.
 5. **Smart quotes and dashes as you type.** Always on, except in code. `"` and `'` become curly:
-   opening after a space, an opening bracket, or the start of a line, else closing. An apostrophe
-   is a closing quote. A second `-` turns "--" into a dash: an en dash where the page's style is
-   spaced en dashes, else an em dash. ⌘Z right after brings back what you typed. A line that
+   opening after a space, an opening bracket or quote, or the start of a line, else closing. An
+   apostrophe is a closing quote. A second `-` turns "--" into a dash: an en dash between numbers
+   or where the page's style is spaced en dashes, else an em dash; ">" right after turns it back
+   into an arrow, "-->". ⌘Z right after brings back what you typed. A line that
    starts with "--" stays, so "---" still makes a rule, and so does "<!--". Pasted text stays as
-   it is.
+   it is: CodeMirror asks the input handler about typing only. Built in `src/editor/smart.ts`: the
+   typed character goes in first, and the curly quote or dash replaces it as its own undo step.
+   Code, HTML, a comment, a link's address, a bare address, and a link definition are left alone,
+   and so are hyphens in a table's rows or at the edge of a ghost or an alternative, and text typed
+   while an input method composes. A quote after a dash closes, and opens once a letter follows it
+   ("—“Go"); "--" after a number becomes an en dash once a number follows it. Claude's answers are matched with quotes straightened, so its
+   straight quotes still find a page's curly ones. Known misses: an apostrophe that starts a word,
+   as in "'90s", becomes an opening quote; YAML front matter is curled; "--" in an address typed before
+   its "@" or "://" becomes a dash; and a stray backtick or "a<b" turns curling off for the rest of
+   its paragraph.
 6. **Sharper writing issues.** The prompt names the punctuation mistakes the rules can't find:
    comma splices, "its" and "it's", a comma between subject and verb, and an aside that opens with
    a dash and closes with a comma. It leaves out words that aren't real words, which the spell

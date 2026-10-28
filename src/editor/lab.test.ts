@@ -88,6 +88,24 @@ describe("AI results on the page", () => {
     expect(wider).toEqual([{ from: 3, to: 14, kind: "grammar", note: "Two words.", fix: "receive the" }]);
   });
 
+  it("finds Claude's quote with straight quotes on a page with curly ones", () => {
+    const state = stateFor("“Its fine,” she said. It’s late.\n");
+    const issues = writingIssuesFrom(state, [
+      { paragraph: 1, find: '"Its fine,"', replace: '"It\'s fine,"', reason: "It's." },
+      { paragraph: 1, find: "It's late", replace: "It is late", reason: "Plainer." },
+    ]);
+    // The fix takes the page's curly quotes.
+    expect(issues).toEqual([
+      { from: 1, to: 4, kind: "grammar", note: "It's.", fix: "It’s" },
+      { from: 22, to: 26, kind: "grammar", note: "Plainer.", fix: "It is" },
+    ]);
+    // And Claude's curly quotes find a page with straight ones.
+    const plain = stateFor('"Its fine," she said.\n');
+    expect(writingIssuesFrom(plain, [{ paragraph: 1, find: "“Its fine,”", replace: "“It’s fine,”", reason: "It's." }])).toEqual([
+      { from: 1, to: 4, kind: "grammar", note: "It's.", fix: "It’s" },
+    ]);
+  });
+
   it("leaves Claude's writing issues in code and ghosts alone, and marks each spot once", () => {
     const state = stateFor("Run `teh` now. {-We recieve it.-}\n\n```\nwe recieve it\n```\n\nthe cat and the cat.\n\n    teh = 1\n");
     const issues = writingIssuesFrom(state, [

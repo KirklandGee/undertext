@@ -69,7 +69,8 @@ the change, whether an agent or a review tool runs it.
   checker (`src-tauri/src/spelling.rs`) about each changed paragraph after a pause, and keeps its
   answers by paragraph text. `punctuation.ts` finds punctuation mistakes in plain text, most with one
   right fix, and imports only `readability.ts`. `proofing.ts` marks them as you write, with Review open or
-  closed. `popover.ts` explains the mark you click and runs its fix. `clipboard.ts` keeps layers on copy and paste.
+  closed. `smart.ts` curls quotes and turns "--" into a dash as you type. `popover.ts` explains the
+  mark you click and runs its fix. `clipboard.ts` keeps layers on copy and paste.
   `setup.ts` puts it together and builds the `EditorInfo` the React panels read.
 - `src/App.tsx` is the app shell. The left panel follows the caret (`src/components/AltPanel.tsx`).
   The right panel is about the whole page: Review and Overflow (`src/components/RightPanel.tsx`).

@@ -169,6 +169,12 @@ back. A slip you are still typing waits until you move on, and an opening parent
 waits while you type on in its sentence. Code, link addresses, HTML, and ghosted text aren't checked. The rules
 are for English.
 
+Quotes curl as you type: `"` and `'` become “ ” and ‘ ’, and an apostrophe becomes ’. Two hyphens
+become a dash: — on most pages, – between numbers or on a page of spaced en dashes, and `-->` stays
+an arrow. ⌘Z right after brings back what you typed. Code, HTML, comments, and addresses keep what
+you type. So do hyphens at the start of a line, so `---` still makes a rule, and hyphens in a
+table. Pasted text stays as it is.
+
 ## AI and Review
 
 Review is the first tab of the right panel. Press ⌘⇧E, or click the word count and grade.
