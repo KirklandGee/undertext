@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Write
+GenericName=Writing app
+Comment=Undertext: a writing tool with layers under the text
+Exec=/home/kgee/.local/bin/undertext %f
+Icon=accessories-text-editor
+Terminal=false
+Categories=Office;TextEditor;
+MimeType=text/markdown;text/plain;

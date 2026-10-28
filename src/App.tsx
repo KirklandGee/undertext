@@ -80,9 +80,12 @@ import {
   ChangedOnDisk,
   confirmDiscard,
   isTauri,
+  omarchyThemeCss,
   openDocument,
   readDocument,
   saveDocument,
+  Startup,
+  startupOptions,
 } from "./lib/files";
 import { speller } from "./lib/spelling";
 import { buildCommands, PaletteCommand } from "./palette/commands";
@@ -765,7 +768,7 @@ export default function App() {
     viewRef.current = v;
     if (import.meta.env.DEV) Object.assign(window, { __view: v });
 
-    (async () => {
+    const restore = async () => {
       const session = readJSON<Session>(SESSION_KEY);
       if (session?.path && isTauri && session.md === session.savedMd) {
         try {
@@ -782,6 +785,27 @@ export default function App() {
       if (session) loadMarkdown(session.md, { path: session.path, name: session.name }, session.savedMd, session.disk ?? null);
       else loadMarkdown(WELCOME, { path: null, name: "Welcome.md" });
       v.focus();
+    };
+
+    (async () => {
+      let startup: Startup = { document: null, fresh: false };
+      try {
+        startup = await startupOptions();
+      } catch (err) {
+        flash(String(err));
+      }
+      await restore();
+      // A file named on the command line, or `--new`, replaces the restored page the same way
+      // Open and New do, so unsaved work in an untitled page is never dropped without asking.
+      const doc = startup.document;
+      if (viewRef.current !== v) return;
+      if (doc && doc.path !== fileRef.current.path) {
+        if (!(await okToLeave())) return;
+        loadMarkdown(doc.content, { path: doc.path, name: doc.name });
+        v.focus();
+      } else if (!doc && startup.fresh) {
+        await doNew();
+      }
     })();
 
     return () => {
@@ -820,6 +844,34 @@ export default function App() {
     const onChange = () => setSystemLight(query.matches);
     query.addEventListener("change", onChange);
     return () => query.removeEventListener("change", onChange);
+  }, []);
+  // On Omarchy the page takes its colors from the current theme. Omarchy rewrites the CSS
+  // on every theme change, so check for it again every few seconds and on focus.
+  useEffect(() => {
+    let style: HTMLStyleElement | null = null;
+    let last: string | null = null;
+    const apply = async () => {
+      const css = await omarchyThemeCss().catch(() => null);
+      if (css === last) return;
+      last = css;
+      if (!css) {
+        style?.remove();
+        style = null;
+        delete document.documentElement.dataset.omarchy;
+        return;
+      }
+      style ??= document.head.appendChild(document.createElement("style"));
+      style.textContent = css;
+      document.documentElement.dataset.omarchy = "";
+    };
+    void apply();
+    const timer = window.setInterval(apply, 3000);
+    window.addEventListener("focus", apply);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", apply);
+      style?.remove();
+    };
   }, []);
   // The title bar and the window's buttons follow the theme too. Null follows the system.
   useEffect(() => {

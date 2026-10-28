@@ -20,6 +20,34 @@ export async function readDocument(path: string): Promise<OpenedFile> {
   return { path, name: basename(path), content };
 }
 
+/** Where an untitled page's first save goes, from `--dir` on the command line. */
+let saveDir: string | null = null;
+
+export interface Startup {
+  /** A document named on the command line, read, or empty if it doesn't exist yet. */
+  document: OpenedFile | null;
+  /** `--new`: start an empty, untitled page. */
+  fresh: boolean;
+}
+
+export async function startupOptions(): Promise<Startup> {
+  if (!isTauri) return { document: null, fresh: false };
+  const found = await invoke<{ document: [string, boolean] | null; new: boolean; dir: string | null }>("startup_options");
+  saveDir = found.dir;
+  let document: OpenedFile | null = null;
+  if (found.document) {
+    const [path, exists] = found.document;
+    document = exists ? await readDocument(path) : { path, name: basename(path), content: "" };
+  }
+  return { document, fresh: found.new };
+}
+
+/** CSS from the current Omarchy theme, or null off Omarchy. */
+export async function omarchyThemeCss(): Promise<string | null> {
+  if (!isTauri) return null;
+  return invoke<string | null>("omarchy_theme_css");
+}
+
 export async function openDocument(): Promise<OpenedFile | null> {
   if (isTauri) {
     const path = await open({ multiple: false, directory: false, filters: FILTERS });
@@ -48,7 +76,8 @@ export async function saveDocument(
   expected?: string,
 ): Promise<{ path: string | null; name: string } | null> {
   if (!isTauri) return { path: null, name };
-  const target = path ?? (await save({ defaultPath: name.endsWith(".md") ? name : `${name}.md`, filters: FILTERS }));
+  const file = name.endsWith(".md") ? name : `${name}.md`;
+  const target = path ?? (await save({ defaultPath: saveDir ? `${saveDir}/${file}` : file, filters: FILTERS }));
   if (!target) return null;
   try {
     await invoke("write_text", { path: target, contents: content, expected: path ? expected : undefined });

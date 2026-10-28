@@ -1,0 +1,23 @@
+#!/bin/bash
+# Launch Undertext (local Omarchy build) detached from the terminal.
+# Usage: undertext [file.md]
+
+BIN="$HOME/Work/write-on-research/undertext/src-tauri/target/release/undertext"
+
+if [[ ! -x $BIN ]]; then
+  echo "Undertext isn't built yet. Run:" >&2
+  echo "  cd ~/Work/write-on-research/undertext && pnpm tauri build --no-bundle" >&2
+  exit 1
+fi
+
+# With no file, start a fresh untitled page whose first save goes to ~/Documents/writings.
+WRITINGS="$HOME/Documents/writings"
+
+# Resolve the file against the caller's directory before detaching.
+args=()
+for arg in "$@"; do
+  if [[ $arg == -* ]]; then args+=("$arg"); else args+=("$(realpath -m -- "$arg")"); fi
+done
+(( $# == 0 )) && args=(--new --dir "$WRITINGS")
+
+setsid -f "$BIN" "${args[@]}" >/dev/null 2>&1

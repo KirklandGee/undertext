@@ -67,14 +67,70 @@ fn safe_url(url: &str) -> Result<&str, String> {
     }
 }
 
+#[cfg(target_os = "macos")]
+const OPENER: &str = "/usr/bin/open";
+#[cfg(not(target_os = "macos"))]
+const OPENER: &str = "xdg-open";
+
 /// Opens a link from the page in the default browser or mail app.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
-    std::process::Command::new("/usr/bin/open")
+    std::process::Command::new(OPENER)
         .arg(safe_url(&url)?)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Could not open {url}: {e}"))
+}
+
+/// What the command line asked for.
+/// `undertext notes.md` opens notes.md, or starts it if it isn't there.
+/// `--new` starts an empty, untitled page. `--dir <folder>` is where its first save goes.
+#[derive(serde::Serialize, Default, PartialEq, Debug)]
+struct Startup {
+    /// A document as an absolute path, and whether it exists yet.
+    document: Option<(String, bool)>,
+    new: bool,
+    dir: Option<String>,
+}
+
+fn absolute(arg: &str) -> Option<String> {
+    Some(std::path::absolute(arg).ok()?.to_str()?.to_string())
+}
+
+fn parse_startup(args: impl IntoIterator<Item = String>) -> Startup {
+    let mut startup = Startup::default();
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--new" => startup.new = true,
+            "--dir" => startup.dir = args.next().and_then(|d| absolute(&d)),
+            _ if arg.starts_with('-') => {}
+            _ if startup.document.is_none() => {
+                startup.document = absolute(&arg)
+                    .filter(|p| document_path(p).is_ok())
+                    .map(|p| {
+                        let exists = Path::new(&p).exists();
+                        (p, exists)
+                    });
+            }
+            _ => {}
+        }
+    }
+    startup
+}
+
+#[tauri::command]
+fn startup_options() -> Startup {
+    parse_startup(std::env::args().skip(1))
+}
+
+/// The page colors for the current Omarchy theme. Omarchy renders
+/// `~/.config/omarchy/themed/undertext.css.tpl` into the theme folder on every
+/// theme change. None off Omarchy, or before the template is installed.
+#[tauri::command]
+fn omarchy_theme_css() -> Option<String> {
+    let home = std::env::var_os("HOME")?;
+    fs::read_to_string(Path::new(&home).join(".local/state/omarchy/current/theme/undertext.css")).ok()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -86,6 +142,8 @@ pub fn run() {
             read_text,
             write_text,
             open_url,
+            startup_options,
+            omarchy_theme_css,
             spelling::check_spelling,
             spelling::spelling_guesses,
             spelling::learn_spelling,
@@ -115,6 +173,29 @@ mod tests {
         assert!(document_path("/Users/me/.zshrc").is_err());
         assert!(document_path("/Users/me/.ssh/id_ed25519").is_err());
         assert!(document_path("/tmp/notes.md.sh").is_err());
+    }
+
+    #[test]
+    fn reads_the_command_line() {
+        let args = |a: &[&str]| parse_startup(a.iter().map(|s| s.to_string()));
+
+        assert_eq!(args(&[]), Startup::default());
+        assert_eq!(
+            args(&["--new", "--dir", "/home/me/writings"]),
+            Startup { document: None, new: true, dir: Some("/home/me/writings".into()) }
+        );
+        assert_eq!(
+            args(&["/tmp/undertext-missing-note.md"]),
+            Startup { document: Some(("/tmp/undertext-missing-note.md".into(), false)), new: false, dir: None }
+        );
+        // Not a text document: ignored, not opened.
+        assert_eq!(args(&["/home/me/.ssh/id_ed25519"]), Startup::default());
+        // A relative path becomes absolute.
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(
+            args(&["draft.md"]).document,
+            Some((cwd.join("draft.md").to_string_lossy().into_owned(), false))
+        );
     }
 
     #[test]
