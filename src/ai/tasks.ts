@@ -321,18 +321,28 @@ export interface WritingAnswer {
  * Claude's answer quotes the page. The page may change while Claude works, so place the answer
  * with writingIssuesFrom on the page as it is when the answer comes.
  */
-export async function findWritingIssues(state: EditorState): Promise<WritingAnswer[]> {
+/** What Claude is asked for writing issues: the page's paragraphs, numbered. Null for an empty page. */
+export function writingIssuesPrompt(state: EditorState): { system: string; prompt: string } | null {
   const paras = docParagraphs(state);
-  if (!paras.length) return [];
+  if (!paras.length) return null;
+  return {
+    system:
+      `${VOICE} Find writing issues: grammar, spelling, punctuation, a wrong or missing word, a broken idiom, ` +
+      "a sentence fragment, or words that don't agree. Don't flag style choices that are correct, and don't " +
+      "rewrite for taste. Don't flag headings. For each issue, quote a short snippet (a few words, unique within " +
+      "its paragraph) as `find`, give the same snippet corrected as `replace`, and a reason in under 10 words. " +
+      "Mark at most 30. Return an empty list if there are none.",
+    prompt: numbered(paras),
+  };
+}
+
+export async function findWritingIssues(state: EditorState): Promise<WritingAnswer[]> {
+  const ask = writingIssuesPrompt(state);
+  if (!ask) return [];
+  const paras = docParagraphs(state);
   const answer = await callClaude<{ issues: WritingAnswer[] }>(
     {
-      system:
-        `${VOICE} Find writing issues: grammar, spelling, punctuation, a wrong or missing word, a broken idiom, ` +
-        "a sentence fragment, or words that don't agree. Don't flag style choices that are correct, and don't " +
-        "rewrite for taste. Don't flag headings. For each issue, quote a short snippet (a few words, unique within " +
-        "its paragraph) as `find`, give the same snippet corrected as `replace`, and a reason in under 10 words. " +
-        "Mark at most 30. Return an empty list if there are none.",
-      prompt: numbered(paras),
+      ...ask,
       schema: object({ issues: list(object({ paragraph: int, find: str, replace: str, reason: str })) }),
       effort: "medium",
       maxTokens: 16000,
