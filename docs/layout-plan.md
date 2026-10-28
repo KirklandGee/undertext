@@ -118,6 +118,10 @@ The floating Lab menu goes away. Its contents live in Review. The ⌘K entries s
 - Highlights use a background tint. Alternatives keep their underline and dots. Ghosts keep their
   fade. The tints avoid the accent purple, which belongs to alternatives.
 - Lab marks and cuts work as today.
+- ⌘+, ⌘−, and ⌘0 change the size of the page text, from 12 to 28 px. The bars and panels keep
+  their size.
+- The line width is in characters of the page text: narrow 44, medium 52, wide 64. So the column
+  widens as the text grows, up to the window.
 
 ## Bars
 
@@ -292,6 +296,14 @@ Phases 4 and 5 don't need the checker, so either can come next.
   spinner, and two faint rows pulse where the suggestions will land. On the Paragraph tab, the
   toolbar shows the task instead. Any running task disables the button. Esc in the panel cancels a
   running task, and closes the panel only when nothing runs.
+- Appearance has no settings window. The text size has keys, and ⌘K holds the theme and the
+  line width, with the rest of the app's commands. A native View menu would mean building the
+  whole menu bar in Rust, Edit menu included.
+- The theme is system, light, or dark. `App.tsx` sets `data-theme` on the page, from the choice or
+  from the system's, and sets the window's theme too, so the title bar and its buttons match.
+  The CSS keeps one light palette, not a copy for the media query and another for the choice.
+- Before the line width followed the text, the column was 64 characters of the 12 px UI font:
+  about 51 of the page's. Medium, 52, keeps that look.
 - The weakener lists copy what Hemingway marks, checked sentence by sentence in its web editor.
   The first lists used broad patterns and marked about twice as much, much of it wrong, such as
   every "get".

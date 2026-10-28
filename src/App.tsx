@@ -1,6 +1,8 @@
 import { EditorSelection, TransactionSpec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { MouseEvent as ReactMouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Appearance, pageStyle, savedAppearance, themeFor, zoom, zoomKey } from "./appearance";
 import { AltPanel, AltTab } from "./components/AltPanel";
 import { AiError, aiCancel, aiClearKey, aiKeyStatus, aiSetKey } from "./ai/client";
 import {
@@ -135,7 +137,10 @@ export default function App() {
   const paletteReturnRef = useRef<Element | null>(null);
 
   const [prefs] = useState(
-    () => readJSON<{ layers?: boolean; panel?: unknown; overflowOpen?: boolean; hidden?: unknown }>(PREFS_KEY) ?? {},
+    () =>
+      readJSON<{ layers?: boolean; panel?: unknown; overflowOpen?: boolean; hidden?: unknown; textSize?: unknown; theme?: unknown; lineWidth?: unknown }>(
+        PREFS_KEY,
+      ) ?? {},
   );
   const [info, setInfo] = useState<EditorInfo | null>(null);
   const [overflow, setOverflowState] = useState("");
@@ -146,6 +151,8 @@ export default function App() {
   const [altOpen, setAltOpen] = useState(false);
   const [panel, setPanel] = useState<RightTab | null>(() => savedPanel(prefs));
   const [hidden, setHidden] = useState<Kind[]>(() => savedHidden(prefs));
+  const [appearance, setAppearance] = useState<Appearance>(() => savedAppearance(prefs));
+  const [systemLight, setSystemLight] = useState(() => matchMedia("(prefers-color-scheme: light)").matches);
   /** Highlights show while Review is open. A new editor state starts with them as they are. */
   const highlightsRef = useRef<HighlightSettings>({ on: false, hidden: [] });
   highlightsRef.current = { on: panel === "review", hidden };
@@ -510,6 +517,13 @@ export default function App() {
     setPanel("overflow");
   };
 
+  /** ⌘+ ⌘− ⌘0: the page's text size. */
+  const zoomText = (step: 1 | -1 | 0) => {
+    const next = zoom(appearance.textSize, step);
+    setAppearance((a) => ({ ...a, textSize: next.size }));
+    flash(next.notice);
+  };
+
   const toggleLayers = () => {
     setLayers(!layers);
     flash(layers ? "Layers hidden. ⌘⇧L shows them." : "Layers shown");
@@ -792,7 +806,28 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeTick]);
 
-  useEffect(() => writeJSON(PREFS_KEY, { layers, panel, hidden }), [layers, panel, hidden]);
+  useEffect(() => writeJSON(PREFS_KEY, { layers, panel, hidden, ...appearance }), [layers, panel, hidden, appearance]);
+
+  // The page's text size, line width, and colors, set before the page paints.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    for (const [name, value] of Object.entries(pageStyle(appearance))) root.style.setProperty(name, value);
+    root.dataset.theme = themeFor(appearance.theme, systemLight);
+    viewRef.current?.requestMeasure();
+  }, [appearance, systemLight]);
+  useEffect(() => {
+    const query = matchMedia("(prefers-color-scheme: light)");
+    const onChange = () => setSystemLight(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  // The title bar and the window's buttons follow the theme too. Null follows the system.
+  useEffect(() => {
+    if (!isTauri) return;
+    getCurrentWindow()
+      .setTheme(appearance.theme === "system" ? null : appearance.theme)
+      .catch((err) => console.warn("Window theme failed:", err));
+  }, [appearance.theme]);
   useEffect(() => {
     viewRef.current?.dispatch(setHighlights({ on: panel === "review", hidden }));
   }, [panel, hidden]);
@@ -804,6 +839,12 @@ export default function App() {
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keysRef.current = (e: KeyboardEvent) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const step = zoomKey(e);
+    if (step !== null) {
+      e.preventDefault();
+      zoomText(step);
+      return;
+    }
     const key = e.key.toLowerCase();
     if (key === "s") {
       e.preventDefault();
@@ -1041,6 +1082,7 @@ export default function App() {
             view: view(),
             info,
             layers,
+            appearance,
             overflowOpen: panel === "overflow",
             reviewOpen: panel === "review",
             altOpen,
@@ -1073,6 +1115,9 @@ export default function App() {
               clearLab: () => finishLab(clearLab()),
               setKey: () => void openKeyDialog(),
               connectSubscription: () => void openSubscriptionDialog(),
+              zoom: zoomText,
+              setTheme: (theme) => setAppearance((a) => ({ ...a, theme })),
+              setLineWidth: (lineWidth) => setAppearance((a) => ({ ...a, lineWidth })),
             },
           })}
           recent={recent}

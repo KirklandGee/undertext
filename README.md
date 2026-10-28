@@ -83,6 +83,7 @@ storage, and answers AI requests with fake results so you can try the UI.
 | ⌘⇧X | Stash the selection in Overflow |
 | ⌘⇧O | Open Overflow and type in it. Press again in Overflow to close it. Esc goes back to the page. |
 | ⌘⇧L | Show or hide the layers |
+| ⌘+ ⌘− ⌘0 | Bigger, smaller, or default text size. The column widens with the text. ⌘K also sets the theme and the line width. |
 | ⌘B ⌘I ⌘E | Bold, italic, inline code. On a selection, a word, or formatted text (removes it) |
 | ⌘⇧K | Link: wraps the selection as `[text]()`. Pasting a URL over a selection also makes a link. |
 | ⌥⌘1 ⌥⌘2 ⌥⌘3 ⌥⌘0 | Heading 1, 2, 3, or back to plain text. The same heading again removes it. |

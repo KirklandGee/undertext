@@ -403,6 +403,7 @@ describe("command palette", () => {
     view: { state: s, dispatch: noop as never },
     info: describeEditor(s),
     layers: true,
+    appearance: { textSize: 15, theme: "system", lineWidth: "medium" },
     overflowOpen: false,
     reviewOpen: false,
     altOpen: false,
@@ -433,6 +434,9 @@ describe("command palette", () => {
       clearLab: noop,
       setKey: noop,
       connectSubscription: noop,
+      zoom: noop,
+      setTheme: noop,
+      setLineWidth: noop,
       ...actions,
     },
   });
@@ -531,5 +535,59 @@ describe("command palette", () => {
     expect(entry.title).toBe("Use all 2 fixes");
     entry.run();
     expect(ran).toEqual(["all"]);
+  });
+
+  it("offers the text sizes, themes, and line widths the page isn't using", () => {
+    const state = stateFor("Some text.\n");
+    const view = (appearance: PaletteContext["appearance"]) =>
+      buildCommands(ctx(state, { appearance }))
+        .filter((c) => c.group === "View")
+        .map((c) => `${c.title}${c.shortcut ? ` ${c.shortcut}` : ""}`);
+    expect(view({ textSize: 15, theme: "system", lineWidth: "medium" })).toEqual([
+      "Hide layers ⌘⇧L",
+      "Open the Alternatives panel ⌘⇧A",
+      "Bigger text ⌘+",
+      "Smaller text ⌘−",
+      "Theme: light",
+      "Theme: dark",
+      "Line width: narrow",
+      "Line width: wide",
+    ]);
+    expect(view({ textSize: 28, theme: "dark", lineWidth: "wide" })).toEqual([
+      "Hide layers ⌘⇧L",
+      "Open the Alternatives panel ⌘⇧A",
+      "Smaller text ⌘−",
+      "Default text size ⌘0",
+      "Theme: match the system",
+      "Theme: light",
+      "Line width: narrow",
+      "Line width: medium",
+    ]);
+    expect(view({ textSize: 12, theme: "light", lineWidth: "narrow" }).slice(2)).toEqual([
+      "Bigger text ⌘+",
+      "Default text size ⌘0",
+      "Theme: match the system",
+      "Theme: dark",
+      "Line width: medium",
+      "Line width: wide",
+    ]);
+  });
+
+  it("runs the appearance commands", () => {
+    const ran: string[] = [];
+    const commands = buildCommands(
+      ctx(
+        stateFor("Some text.\n"),
+        { appearance: { textSize: 20, theme: "system", lineWidth: "medium" } },
+        {
+          zoom: (step) => ran.push(`zoom ${step}`),
+          setTheme: (theme) => ran.push(`theme ${theme}`),
+          setLineWidth: (width) => ran.push(`width ${width}`),
+        },
+      ),
+    );
+    const titles = ["Bigger text", "Smaller text", "Default text size", "Theme: light", "Theme: dark", "Line width: narrow", "Line width: wide"];
+    for (const title of titles) commands.find((c) => c.title === title)!.run();
+    expect(ran).toEqual(["zoom 1", "zoom -1", "zoom 0", "theme light", "theme dark", "width narrow", "width wide"]);
   });
 });

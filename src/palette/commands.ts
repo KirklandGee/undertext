@@ -2,6 +2,7 @@ import { redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, TransactionSpec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { CHECKS, CheckId, TRIMS, TrimId } from "../ai/tasks";
+import { Appearance, DEFAULT_TEXT_SIZE, LINE_WIDTHS, LineWidth, TEXT_SIZES, Theme } from "../appearance";
 import {
   cycleAtCaret,
   cycleVersionAtCaret,
@@ -39,6 +40,7 @@ export interface PaletteContext {
   view: Pick<EditorView, "state" | "dispatch">;
   info: EditorInfo;
   layers: boolean;
+  appearance: Appearance;
   overflowOpen: boolean;
   reviewOpen: boolean;
   altOpen: boolean;
@@ -70,6 +72,10 @@ export interface PaletteContext {
     clearLab(): void;
     setKey(): void;
     connectSubscription(): void;
+    /** ⌘+ is 1, ⌘− is -1, ⌘0 is 0. */
+    zoom(step: 1 | -1 | 0): void;
+    setTheme(theme: Theme): void;
+    setLineWidth(width: LineWidth): void;
   };
 }
 
@@ -298,6 +304,24 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     keywords: "sidebar panel",
     run: ctx.altOpen ? actions.closeAlternatives : actions.openAlternatives,
   });
+  const { textSize, theme, lineWidth } = ctx.appearance;
+  const sizes = "font zoom scale larger smaller appearance";
+  if (textSize < TEXT_SIZES[TEXT_SIZES.length - 1]) add({ id: "view.bigger", group: "View", title: "Bigger text", shortcut: "⌘+", keywords: sizes, run: () => actions.zoom(1) });
+  if (textSize > TEXT_SIZES[0]) add({ id: "view.smaller", group: "View", title: "Smaller text", shortcut: "⌘−", keywords: sizes, run: () => actions.zoom(-1) });
+  if (textSize !== DEFAULT_TEXT_SIZE) add({ id: "view.defaultSize", group: "View", title: "Default text size", shortcut: "⌘0", keywords: `${sizes} reset actual`, run: () => actions.zoom(0) });
+  const themes: [Theme, string][] = [
+    ["system", "match the system"],
+    ["light", "light"],
+    ["dark", "dark"],
+  ];
+  for (const [id, name] of themes) {
+    if (id !== theme) add({ id: `view.theme.${id}`, group: "View", title: `Theme: ${name}`, keywords: "appearance color mode night day macos", run: () => actions.setTheme(id) });
+  }
+  for (const id of Object.keys(LINE_WIDTHS) as LineWidth[]) {
+    if (id !== lineWidth) {
+      add({ id: `view.width.${id}`, group: "View", title: `Line width: ${id}`, keywords: `column measure characters page ${LINE_WIDTHS[id]}`, run: () => actions.setLineWidth(id) });
+    }
+  }
 
   // Document
   add({ id: "doc.new", group: "Document", title: "New document", shortcut: "⌘N", keywords: "file create blank", run: actions.newDoc });

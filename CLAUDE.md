@@ -72,7 +72,8 @@ the change, whether an agent or a review tool runs it.
   closed. `smart.ts` curls quotes and turns "--" into a dash as you type. `popover.ts` explains the
   mark you click and runs its fix. `clipboard.ts` keeps layers on copy and paste.
   `setup.ts` puts it together and builds the `EditorInfo` the React panels read.
-- `src/App.tsx` is the app shell. The left panel follows the caret (`src/components/AltPanel.tsx`).
+- `src/App.tsx` is the app shell. `src/appearance.ts` holds the text size, theme, and line width,
+  and `App.tsx` puts them on the page as CSS variables and `data-theme`. The left panel follows the caret (`src/components/AltPanel.tsx`).
   The right panel is about the whole page: Review and Overflow (`src/components/RightPanel.tsx`).
   `src/ai/tasks.ts` turns Claude's answers into page ranges.
 - `src-tauri/src/lib.rs`: file reads and writes (a save refuses to overwrite a change from another
