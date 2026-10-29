@@ -81,6 +81,7 @@ import {
   confirmDiscard,
   isTauri,
   omarchyThemeCss,
+  onRelaunch,
   openDocument,
   readDocument,
   saveDocument,
@@ -787,16 +788,9 @@ export default function App() {
       v.focus();
     };
 
-    (async () => {
-      let startup: Startup = { document: null, fresh: false };
-      try {
-        startup = await startupOptions();
-      } catch (err) {
-        flash(String(err));
-      }
-      await restore();
-      // A file named on the command line, or `--new`, replaces the restored page the same way
-      // Open and New do, so unsaved work in an untitled page is never dropped without asking.
+    // A file named on the command line, or `--new`, replaces the page the same way Open and New
+    // do, so unsaved work in an untitled page is never dropped without asking.
+    const follow = async (startup: Startup) => {
       const doc = startup.document;
       if (viewRef.current !== v) return;
       if (doc && doc.path !== fileRef.current.path) {
@@ -806,9 +800,27 @@ export default function App() {
       } else if (!doc && startup.fresh) {
         await doNew();
       }
+    };
+
+    // Launching again while the app runs comes here instead of opening a second app.
+    const stopRelaunch = onRelaunch(
+      (startup) => void follow(startup),
+      (err) => flash(String(err)),
+    );
+
+    (async () => {
+      let startup: Startup = { document: null, fresh: false };
+      try {
+        startup = await startupOptions();
+      } catch (err) {
+        flash(String(err));
+      }
+      await restore();
+      await follow(startup);
     })();
 
     return () => {
+      stopRelaunch();
       viewRef.current = null;
       v.destroy();
     };

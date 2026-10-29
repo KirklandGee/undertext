@@ -122,6 +122,11 @@ button:focus-visible {
   justify-content: space-between;
 }
 
+/* Only macOS draws window buttons over the top bar's left end. */
+:root:not([data-mac]) .topbar {
+  padding-left: 14px;
+}
+
 .quiet {
   color: var(--faint);
   transition: color 0.15s;

@@ -85,7 +85,7 @@ fn open_url(url: String) -> Result<(), String> {
 /// What the command line asked for.
 /// `undertext notes.md` opens notes.md, or starts it if it isn't there.
 /// `--new` starts an empty, untitled page. `--dir <folder>` is where its first save goes.
-#[derive(serde::Serialize, Default, PartialEq, Debug)]
+#[derive(serde::Serialize, Clone, Default, PartialEq, Debug)]
 struct Startup {
     /// A document as an absolute path, and whether it exists yet.
     document: Option<(String, bool)>,
@@ -93,20 +93,33 @@ struct Startup {
     dir: Option<String>,
 }
 
-fn absolute(arg: &str) -> Option<String> {
-    Some(std::path::absolute(arg).ok()?.to_str()?.to_string())
+/// `arg` as an absolute path, taking a relative one from `cwd`, with `.` and `..` worked out.
+fn absolute(arg: &str, cwd: &Path) -> Option<String> {
+    use std::path::{Component, PathBuf};
+    let mut path = PathBuf::new();
+    for part in cwd.join(arg).components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                path.pop();
+            }
+            other => path.push(other),
+        }
+    }
+    path.is_absolute().then(|| path.to_str().map(String::from))?
 }
 
-fn parse_startup(args: impl IntoIterator<Item = String>) -> Startup {
+/// Reads the arguments after the program name, with relative paths taken from `cwd`.
+fn parse_startup(args: impl IntoIterator<Item = String>, cwd: &Path) -> Startup {
     let mut startup = Startup::default();
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--new" => startup.new = true,
-            "--dir" => startup.dir = args.next().and_then(|d| absolute(&d)),
+            "--dir" => startup.dir = args.next().and_then(|d| absolute(&d, cwd)),
             _ if arg.starts_with('-') => {}
             _ if startup.document.is_none() => {
-                startup.document = absolute(&arg)
+                startup.document = absolute(&arg, cwd)
                     .filter(|p| document_path(p).is_ok())
                     .map(|p| {
                         let exists = Path::new(&p).exists();
@@ -121,7 +134,8 @@ fn parse_startup(args: impl IntoIterator<Item = String>) -> Startup {
 
 #[tauri::command]
 fn startup_options() -> Startup {
-    parse_startup(std::env::args().skip(1))
+    let cwd = std::env::current_dir().unwrap_or_default();
+    parse_startup(std::env::args().skip(1), &cwd)
 }
 
 /// The page colors for the current Omarchy theme. Omarchy renders
@@ -136,6 +150,20 @@ fn omarchy_theme_css() -> Option<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // One window: launching again, as `undertext notes.md`, hands its arguments to the
+        // running app as a "startup" event, where they open like they would at launch. Two apps
+        // would share and overwrite one session copy.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            use tauri::{Emitter, Manager};
+            let startup = parse_startup(argv.into_iter().skip(1), Path::new(&cwd));
+            if let Err(e) = app.emit("startup", startup) {
+                eprintln!("Undertext: could not pass on the new launch: {e}");
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .manage(ai::AiClient::default())
         .invoke_handler(tauri::generate_handler![
@@ -177,7 +205,7 @@ mod tests {
 
     #[test]
     fn reads_the_command_line() {
-        let args = |a: &[&str]| parse_startup(a.iter().map(|s| s.to_string()));
+        let args = |a: &[&str]| parse_startup(a.iter().map(|s| s.to_string()), Path::new("/home/me/notes"));
 
         assert_eq!(args(&[]), Startup::default());
         assert_eq!(
@@ -190,11 +218,14 @@ mod tests {
         );
         // Not a text document: ignored, not opened.
         assert_eq!(args(&["/home/me/.ssh/id_ed25519"]), Startup::default());
-        // A relative path becomes absolute.
-        let cwd = std::env::current_dir().unwrap();
+        // A relative path is taken from the launch's folder, not this process's.
         assert_eq!(
-            args(&["draft.md"]).document,
-            Some((cwd.join("draft.md").to_string_lossy().into_owned(), false))
+            args(&["draft.md", "--dir", "../writings"]),
+            Startup {
+                document: Some(("/home/me/notes/draft.md".into(), false)),
+                new: false,
+                dir: Some("/home/me/writings".into())
+            }
         );
     }
 

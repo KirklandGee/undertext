@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -30,16 +31,39 @@ export interface Startup {
   fresh: boolean;
 }
 
-export async function startupOptions(): Promise<Startup> {
-  if (!isTauri) return { document: null, fresh: false };
-  const found = await invoke<{ document: [string, boolean] | null; new: boolean; dir: string | null }>("startup_options");
-  saveDir = found.dir;
+/** `Startup` in src-tauri/src/lib.rs. */
+interface RawStartup {
+  document: [string, boolean] | null;
+  new: boolean;
+  dir: string | null;
+}
+
+async function readStartup(raw: RawStartup): Promise<Startup> {
+  if (raw.dir) saveDir = raw.dir;
   let document: OpenedFile | null = null;
-  if (found.document) {
-    const [path, exists] = found.document;
+  if (raw.document) {
+    const [path, exists] = raw.document;
     document = exists ? await readDocument(path) : { path, name: basename(path), content: "" };
   }
-  return { document, fresh: found.new };
+  return { document, fresh: raw.new };
+}
+
+/** What the command line asked for at launch. */
+export async function startupOptions(): Promise<Startup> {
+  if (!isTauri) return { document: null, fresh: false };
+  return readStartup(await invoke<RawStartup>("startup_options"));
+}
+
+/**
+ * Calls `handle` each time the app is launched again while it runs, as `undertext notes.md`.
+ * Returns a function that stops listening.
+ */
+export function onRelaunch(handle: (startup: Startup) => void, fail: (err: unknown) => void): () => void {
+  if (!isTauri) return () => {};
+  const stop = listen<RawStartup>("startup", (e) => {
+    readStartup(e.payload).then(handle, fail);
+  });
+  return () => void stop.then((unlisten) => unlisten());
 }
 
 /** CSS from the current Omarchy theme, or null off Omarchy. */
