@@ -38,12 +38,28 @@ function cycleHovered(view: EditorView, dir: 1 | -1): boolean {
   return false;
 }
 
+/**
+ * The alternative whose line the point is on: over its letters, or in the space above or below
+ * them that the line height adds, where the underline is drawn. A span's box only covers its
+ * letters, so without this the underline itself didn't count as hovering.
+ */
+function altNear(view: EditorView, x: number, y: number): HTMLElement | null {
+  for (const el of view.contentDOM.querySelectorAll<HTMLElement>(".alt")) {
+    if (el.dataset.count === "1") continue;
+    for (const r of el.getClientRects()) {
+      const pad = Math.max(0, (view.defaultLineHeight - r.height) / 2) + 1;
+      if (x >= r.left - 1 && x <= r.right + 1 && y >= r.top - pad && y <= r.bottom + pad) return el;
+    }
+  }
+  return null;
+}
+
 const hoverCycling = Prec.highest(
   EditorView.domEventHandlers({
-    mousemove(e) {
+    mousemove(e, view) {
       trackMouse(e);
       const el = e.target as HTMLElement;
-      const altEl = el.closest?.(".alt") as HTMLElement | null;
+      const altEl = (el.closest?.(".alt") as HTMLElement | null) ?? altNear(view, e.clientX, e.clientY);
       hover.altId = altEl && altEl.dataset.count !== "1" ? (altEl.dataset.altId ?? null) : null;
       hover.vid = (el.closest?.(".has-versions") as HTMLElement | null)?.dataset.vid ?? null;
       return false;
