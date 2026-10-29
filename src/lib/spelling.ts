@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Checked, Speller } from "../editor/spelling";
 import { isTauri } from "./files";
 
-/** The Mac's spell checker, through src-tauri/src/spelling.rs. */
+/** The system spell checker (macOS, or Enchant on Linux), through src-tauri/src/spelling.rs. */
 const macSpeller: Speller = {
   check: (texts, sample) => invoke<Checked[]>("check_spelling", { texts, sample }),
   guesses: (word, language) => invoke<string[]>("spelling_guesses", { word, language }),

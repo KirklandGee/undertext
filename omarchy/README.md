@@ -9,6 +9,8 @@ Local setup for running Undertext on [Omarchy](https://omarchy.org/). Not part o
   untitled one. An untitled page's first save goes to
   `~/Documents/writings`. `undertext notes.md` opens notes.md, or starts it.
 - `undertext.desktop`: launcher entry, shown as "Write".
+- Spelling uses Enchant with Hunspell dictionaries: `sudo pacman -S hunspell-en_us`. Learned words
+  go to `~/.config/enchant/en_US.dic`.
 
 ## Install
 

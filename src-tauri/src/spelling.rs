@@ -182,29 +182,227 @@ mod mac {
 #[cfg(target_os = "macos")]
 use mac::{check, guesses, has_learned, language_of, learn, unlearn};
 
-// Undertext is built for macOS. Elsewhere, nothing is marked.
-#[cfg(not(target_os = "macos"))]
+/// The words in a text, as UTF-16 offsets: letters and digits, with an apostrophe inside a word
+/// kept ("don't", "rock ’n’ roll" gives "n"). Hyphens and other marks split words. A word with a
+/// digit or an underscore ("3rd", "snake_case") is skipped, as spell checkers do.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn words(text: &str) -> Vec<(usize, usize, String)> {
+    let chars: Vec<char> = text.chars().collect();
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let is_apostrophe = |c: char| c == '\'' || c == '’';
+    let mut found = Vec::new();
+    let mut at = 0; // UTF-16 offset of chars[i]
+    let mut i = 0;
+    while i < chars.len() {
+        if !is_word(chars[i]) {
+            at += chars[i].len_utf16();
+            i += 1;
+            continue;
+        }
+        let (start, start_at) = (i, at);
+        while i < chars.len()
+            && (is_word(chars[i])
+                || (is_apostrophe(chars[i]) && chars.get(i + 1).is_some_and(|&c| is_word(c))))
+        {
+            at += chars[i].len_utf16();
+            i += 1;
+        }
+        let word: String = chars[start..i].iter().collect();
+        if !word.chars().any(|c| c.is_numeric() || c == '_') {
+            found.push((start_at, at, word));
+        }
+    }
+    found
+}
+
+/// Spelling from Enchant, which uses Hunspell's dictionaries. It checks in the language of `LANG`
+/// (install `hunspell-en_us` or another `hunspell-*` package), and learned words go to Enchant's
+/// personal word list, `~/.config/enchant/<language>.dic`, shared with other apps that use it.
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::ffi::{c_char, c_int, CStr, CString};
+    use std::sync::{Mutex, OnceLock};
+
+    #[repr(C)]
+    struct EnchantBroker {
+        _private: [u8; 0],
+    }
+    #[repr(C)]
+    struct EnchantDict {
+        _private: [u8; 0],
+    }
+
+    #[link(name = "enchant-2")]
+    extern "C" {
+        fn enchant_broker_init() -> *mut EnchantBroker;
+        fn enchant_broker_request_dict(broker: *mut EnchantBroker, tag: *const c_char) -> *mut EnchantDict;
+        fn enchant_dict_check(dict: *mut EnchantDict, word: *const c_char, len: isize) -> c_int;
+        fn enchant_dict_suggest(
+            dict: *mut EnchantDict,
+            word: *const c_char,
+            len: isize,
+            out_n: *mut usize,
+        ) -> *mut *mut c_char;
+        fn enchant_dict_free_string_list(dict: *mut EnchantDict, list: *mut *mut c_char);
+        fn enchant_dict_add(dict: *mut EnchantDict, word: *const c_char, len: isize);
+        fn enchant_dict_remove(dict: *mut EnchantDict, word: *const c_char, len: isize);
+        fn enchant_dict_is_added(dict: *mut EnchantDict, word: *const c_char, len: isize) -> c_int;
+    }
+
+    /// One dictionary for the app's life. Enchant isn't thread safe, so it sits behind a lock.
+    struct Dict {
+        dict: *mut EnchantDict,
+        language: String,
+    }
+    // SAFETY: the pointer is only used while holding the Mutex below.
+    unsafe impl Send for Dict {}
+
+    /// "en_US" from LANG=en_US.UTF-8, else en_US.
+    fn language_tag() -> String {
+        std::env::var("LANG")
+            .ok()
+            .map(|l| l.split(['.', '@']).next().unwrap_or("").to_string())
+            .filter(|l| !l.is_empty() && l != "C" && l != "POSIX")
+            .unwrap_or_else(|| "en_US".into())
+    }
+
+    fn dict() -> &'static Mutex<Option<Dict>> {
+        static DICT: OnceLock<Mutex<Option<Dict>>> = OnceLock::new();
+        DICT.get_or_init(|| {
+            // SAFETY: the broker lives for the app's life, so it is never freed.
+            let broker = unsafe { enchant_broker_init() };
+            if broker.is_null() {
+                return Mutex::new(None);
+            }
+            let tag = language_tag();
+            // "en_US", then "en".
+            let tags = [tag.clone(), tag.split('_').next().unwrap_or(&tag).to_string()];
+            let found = tags.iter().find_map(|t| {
+                let c = CString::new(t.as_str()).ok()?;
+                // SAFETY: broker is non-null and the tag is a valid C string.
+                let d = unsafe { enchant_broker_request_dict(broker, c.as_ptr()) };
+                (!d.is_null()).then(|| Dict { dict: d, language: t.clone() })
+            });
+            if found.is_none() {
+                eprintln!("Undertext: no spelling dictionary for {tag}. Install hunspell-en_us or another hunspell-* package.");
+            }
+            Mutex::new(found)
+        })
+    }
+
+    /// Runs `f` with the dictionary, or returns `default` when there is none.
+    fn with<T>(default: T, f: impl FnOnce(&Dict) -> T) -> T {
+        match dict().lock() {
+            Ok(guard) => guard.as_ref().map_or(default, f),
+            Err(_) => default,
+        }
+    }
+
+    /// Hunspell's dictionaries spell "don't" with a straight apostrophe.
+    fn plain(word: &str) -> Option<CString> {
+        CString::new(word.replace('’', "'")).ok()
+    }
+
+    fn is_correct(d: &Dict, word: &str) -> bool {
+        let Some(c) = plain(word) else { return true };
+        // SAFETY: d.dict is non-null; -1 means the string is NUL-terminated.
+        unsafe { enchant_dict_check(d.dict, c.as_ptr(), -1) == 0 }
+    }
+
+    pub fn check(text: &str, _page_language: impl FnOnce() -> Option<String>) -> super::Checked {
+        with(super::Checked { language: None, words: Vec::new() }, |d| super::Checked {
+            language: Some(d.language.clone()),
+            words: super::words(text)
+                .into_iter()
+                .filter(|(_, _, w)| !is_correct(d, w))
+                .map(|(from, to, _)| (from, to))
+                .collect(),
+        })
+    }
+
+    pub fn language_of(_sample: &str) -> Option<String> {
+        with(None, |d| Some(d.language.clone()))
+    }
+
+    pub fn guesses(word: &str, _language: Option<&str>) -> Vec<String> {
+        with(Vec::new(), |d| {
+            let Some(c) = plain(word) else { return Vec::new() };
+            let mut n = 0usize;
+            // SAFETY: d.dict is non-null; the list is freed with the call Enchant provides.
+            unsafe {
+                let list = enchant_dict_suggest(d.dict, c.as_ptr(), -1, &mut n);
+                if list.is_null() {
+                    return Vec::new();
+                }
+                let out = (0..n)
+                    .map(|i| CStr::from_ptr(*list.add(i)).to_string_lossy().into_owned())
+                    .collect();
+                enchant_dict_free_string_list(d.dict, list);
+                out
+            }
+        })
+    }
+
+    pub fn learn(word: &str) {
+        with((), |d| {
+            if let Some(c) = plain(word) {
+                // SAFETY: d.dict is non-null.
+                unsafe { enchant_dict_add(d.dict, c.as_ptr(), -1) }
+            }
+        })
+    }
+
+    /// As on the Mac, "teh" learned covers "Teh".
+    pub fn has_learned(word: &str) -> bool {
+        with(false, |d| {
+            [word.to_string(), word.to_lowercase()].iter().any(|w| {
+                // SAFETY: d.dict is non-null.
+                plain(w).is_some_and(|c| unsafe { enchant_dict_is_added(d.dict, c.as_ptr(), -1) } != 0)
+            })
+        })
+    }
+
+    /// "Teh" takes out "teh". Enchant also lists a removed word as wrong, which is right for a
+    /// word you taught it, the only kind the page offers to unlearn.
+    pub fn unlearn(word: &str) {
+        with((), |d| {
+            for w in [word.to_string(), word.to_lowercase()] {
+                // SAFETY: d.dict is non-null.
+                let added = plain(&w).is_some_and(|c| unsafe { enchant_dict_is_added(d.dict, c.as_ptr(), -1) } != 0);
+                if let (true, Some(c)) = (added, plain(&w)) {
+                    unsafe { enchant_dict_remove(d.dict, c.as_ptr(), -1) }
+                }
+            }
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+use linux::{check, guesses, has_learned, language_of, learn, unlearn};
+
+// Elsewhere, nothing is marked.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn check(_text: &str, _page_language: impl FnOnce() -> Option<String>) -> Checked {
     Checked {
         language: None,
         words: Vec::new(),
     }
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn language_of(_sample: &str) -> Option<String> {
     None
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn guesses(_word: &str, _language: Option<&str>) -> Vec<String> {
     Vec::new()
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn learn(_word: &str) {}
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn has_learned(_word: &str) -> bool {
     false
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn unlearn(_word: &str) {}
 
 #[cfg(all(test, target_os = "macos"))]
@@ -351,5 +549,51 @@ mod tests {
         unlearn_spelling("Zorbletish".into());
         assert!(!learned_spelling("zorbletish".into()));
         assert_eq!(words("A Zorbletish page."), vec![(2, 12)]);
+    }
+}
+
+#[cfg(test)]
+mod word_tests {
+    use super::words;
+
+    fn texts(text: &str) -> Vec<String> {
+        words(text).into_iter().map(|w| w.2).collect()
+    }
+
+    #[test]
+    fn keeps_apostrophes_inside_words_and_splits_on_hyphens() {
+        assert_eq!(texts("Don’t split it's, re-check."), ["Don’t", "split", "it's", "re", "check"]);
+        // A trailing apostrophe is not part of the word.
+        assert_eq!(texts("the dogs' bone"), ["the", "dogs", "bone"]);
+    }
+
+    #[test]
+    fn skips_words_with_digits_or_underscores() {
+        assert_eq!(texts("the 3rd snake_case word"), ["the", "word"]);
+        assert!(texts("").is_empty());
+    }
+
+    #[test]
+    fn counts_offsets_in_utf16() {
+        // "é" is one UTF-16 unit and "😀" two, so "teh" starts at 8.
+        assert_eq!(
+            words("café 😀 teh"),
+            [(0, 4, "café".to_string()), (8, 11, "teh".to_string())]
+        );
+    }
+}
+
+/// Needs a dictionary: `sudo pacman -S hunspell-en_us`, then
+/// `LANG=en_US.UTF-8 cargo test --lib enchant -- --ignored`.
+#[cfg(all(test, target_os = "linux"))]
+mod enchant_tests {
+    #[test]
+    #[ignore]
+    fn marks_misspelled_words_and_guesses() {
+        let checked = super::check("We teh people recieve it.", || None);
+        assert_eq!(checked.language.as_deref(), Some("en_US"));
+        assert_eq!(checked.words, [(3, 6), (14, 21)]);
+        assert!(super::guesses("recieve", None).contains(&"receive".to_string()));
+        assert!(super::check("Don’t worry.", || None).words.is_empty());
     }
 }
