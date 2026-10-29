@@ -5,7 +5,8 @@ Local setup for running Undertext on [Omarchy](https://omarchy.org/). Not part o
 - `undertext.css.tpl`: Omarchy theme template. Omarchy renders it into
   `~/.local/state/omarchy/current/theme/undertext.css` on every theme change, and the app picks
   that file up within a few seconds.
-- `undertext`: launcher. `undertext` opens a fresh untitled page whose first save goes to
+- `undertext`: launcher. `undertext` reopens the last page, and `undertext --new` starts a fresh
+  untitled one. An untitled page's first save goes to
   `~/Documents/writings`. `undertext notes.md` opens notes.md, or starts it.
 - `undertext.desktop`: launcher entry, shown as "Write".
 

@@ -10,14 +10,14 @@ if [[ ! -x $BIN ]]; then
   exit 1
 fi
 
-# With no file, start a fresh untitled page whose first save goes to ~/Documents/writings.
+# With no file, Undertext reopens the last page. `--new` starts a fresh untitled one.
+# An untitled page's first save goes to ~/Documents/writings.
 WRITINGS="$HOME/Documents/writings"
 
 # Resolve the file against the caller's directory before detaching.
-args=()
+args=(--dir "$WRITINGS")
 for arg in "$@"; do
   if [[ $arg == -* ]]; then args+=("$arg"); else args+=("$(realpath -m -- "$arg")"); fi
 done
-(( $# == 0 )) && args=(--new --dir "$WRITINGS")
 
 setsid -f "$BIN" "${args[@]}" >/dev/null 2>&1
